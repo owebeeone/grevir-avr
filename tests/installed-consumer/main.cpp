@@ -48,6 +48,17 @@ constexpr auto selected = avr::base::getClockDivider<ClockCode, ClockTraits>(1, 
 static_assert(selected == ClockCode::eight);
 constexpr auto top = avr::base::getClockTimerTop<ClockCode, ClockTraits>(selected, 1, 256, false);
 static_assert(top == 32);
+
+enum class WaveCode : unsigned char { fixed = 31, capture = 6 };
+using FixedMode = avr::base::WaveformGeneratorMode<WaveCode, WaveCode::fixed,
+  avr::base::TimerMode::pwm, avr::base::TimerPwmMode::fast, avr::base::TimerTop::built_in, 255>;
+using CaptureMode = avr::base::WaveformGeneratorMode<WaveCode, WaveCode::capture,
+  avr::base::TimerMode::pwm, avr::base::TimerPwmMode::phase_correct, avr::base::TimerTop::icr>;
+using WaveModes = avr::base::WaveformGeneratorModes<FixedMode, CaptureMode>;
+static_assert(WaveModes::found<avr::base::TimerMode::pwm, avr::base::TimerPwmMode::fast,
+  avr::base::TimerTop::built_in>);
+static_assert(std::is_same_v<WaveModes::built_in_type<avr::base::TimerMode::pwm,
+  avr::base::TimerPwmMode::fast, 255>, FixedMode>);
 }
 
 int main() {
@@ -68,6 +79,13 @@ int main() {
   }
   if (avr::base::getTimerFrequency<double, ClockCode, ClockTraits>(top, selected, 256, false) != 1) {
     return 4;
+  }
+  const auto source = WaveModes::getParamFor<avr::base::WaveformGeneratorModeParam::timer_top>(WaveCode::capture);
+  if (!source.is_present() || source.get() != avr::base::TimerTop::icr) {
+    return 5;
+  }
+  if (WaveModes::getParamFor<avr::base::WaveformGeneratorModeParam::timer_top>(static_cast<WaveCode>(255)).is_present()) {
+    return 6;
   }
   return 0;
 }

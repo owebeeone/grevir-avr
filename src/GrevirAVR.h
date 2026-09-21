@@ -4,3 +4,4 @@
 #include <grevir/avr/register.hpp>
 #include <grevir/avr/gpio.hpp>
 #include <grevir/avr/timer/clock.hpp>
+#include <grevir/avr/timer/mode.hpp>

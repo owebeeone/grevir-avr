@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(grevir_avr VERSION 0.1.0 LANGUAGES CXX)
-foreach(dependency IN ITEMS registers core)
+foreach(dependency IN ITEMS base registers core)
   if(NOT TARGET grevir::${dependency})
     find_package(grevir-${dependency} CONFIG REQUIRED)
   endif()
@@ -9,7 +9,7 @@ add_library(grevir_avr INTERFACE)
 add_library(grevir::avr ALIAS grevir_avr)
 set_target_properties(grevir_avr PROPERTIES EXPORT_NAME avr)
 target_compile_features(grevir_avr INTERFACE cxx_std_23)
-target_link_libraries(grevir_avr INTERFACE grevir::registers grevir::core)
+target_link_libraries(grevir_avr INTERFACE grevir::base grevir::registers grevir::core)
 target_include_directories(grevir_avr INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   $<INSTALL_INTERFACE:include>)

@@ -1,7 +1,7 @@
 # Grevir AVR
 
-AVR register/GPIO and initial timer-clock extraction from Ardoinus. This package depends on Grevir
-Registers and Core, retains the `ardo::sys::avr` namespaces, and uses explicit
+AVR register/GPIO and timer clock/mode extraction from Ardoinus. This package depends on Grevir
+Base, Registers and Core, retains the `ardo::sys::avr` namespaces, and uses explicit
 access and synchronization policies. It includes no Arduino dependency or complete
 device inventory. AVR compiler and hardware validation remain on hold.
 
@@ -14,6 +14,7 @@ device inventory. AVR compiler and hardware validation remain on hold.
 | `register.hpp` | `sys/mcu/avr/base/ardo_avr_base_register.h`: explicit access binding and register alias |
 | `gpio.hpp` | Base GPIO header plus directional wrappers from `ardo_supplemental_atmega328p_dev.h` |
 | `timer/clock.hpp` | Divider maps and count/frequency computations consolidated from both legacy timer implementations |
+| `timer/mode.hpp` | Waveform metadata, compile-time selection and runtime metadata lookup, with caller-supplied mode tables |
 
 All headers live under `grevir/avr/`; `<GrevirAVR.h>` is the public entry point.
 The duplicate generic GPIO bodies are consolidated. Core already supplies their
@@ -108,13 +109,42 @@ out-of-range values before casting, including `float` rounding `UINT32_MAX` up t
 2^32. Target floating-point behavior, size and runtime cost remain unvalidated.
 No AVR compiler validation is performed.
 
+## Timer waveform modes
+
+The matching waveform groups in the two legacy timer headers are consolidated
+in `timer/mode.hpp`. `TimerMode`, `TimerPwmMode` and `TimerTop` describe normal,
+CTC and PWM operation, PWM counting behavior, and fixed/OCRA/ICR TOP sources.
+`TimerPwmModePhaseCorrect` recognizes both phase-correct variants.
+
+`WaveformGeneratorMode<Enum, Code, Mode, PwmMode, TopSource, BuiltInTop>` carries
+metadata. `WaveformGeneratorModes<...>::type<Mode, PwmMode, TopSource>` returns all
+matching entries in declaration order; `found` reports whether that tuple is
+nonempty. `built_in_type<Mode, PwmMode, Count>` returns the first exact built-in
+TOP match, or `void`, including on an empty table. These are selection queries;
+the later configuration layer must diagnose an unsatisfied mandatory request.
+
+`getParamFor<Parameter>(code)` returns `setl::Optional` metadata. Unknown codes
+return an empty result. Its out-parameter overload leaves the supplied value
+unchanged on a miss; plain-value outputs can also be used in constant expressions.
+Runtime lookup retains the first-match behavior of the legacy table. Callers are
+responsible for valid device metadata; this is not a hardware mode-table validator.
+
+Register-supplied TOP entries default to the explicitly 32-bit metadata marker
+`UnspecifiedTimerTop`. It replaces the old dependency on host/target-sized `NA`;
+inspect `timer_top` before treating `built_in_top` as an actual count. The helper
+performs no frequency arithmetic and introduces no floating-point or 64-bit work.
+
+ATmega328P waveform enums/tables and six legacy assertions live only in host
+fixtures for this increment. Device register encodings/inventory, complete timer
+definitions, configuration and runtime output application remain separate work.
+
 ## Validation and use
 
 Apple Clang 21 / arm64 macOS / C++23 checks:
 
-- Six public headers compile independently, alongside address/type assertions and
+- Seven public headers compile independently, alongside address/type assertions and
   a compile-only volatile-access user.
-- Nineteen host cases pass. They cover
+- Twenty-three host cases pass. They cover
   offsets, widths, preserved bits, access order, explicit barrier scopes, reads,
   directional wrappers and open-drain configuration. Dynamic ordering first failed
   for both output levels and now agrees with typed configuration.
@@ -126,11 +156,18 @@ Apple Clang 21 / arm64 macOS / C++23 checks:
   inputs, narrow output limits and explicitly selected floating-point conversion
   bounds. Optimized native IR for dynamic 32-bit divider/count/frequency calls
   contains no floating-point or 64-bit arithmetic; this is not AVR codegen proof.
+- Four waveform cases verify all 21 legacy fixture entries, absent metadata for
+  reserved/unknown encodings, preserved outputs on misses, and selected encodings
+  applied to split mock register fields. Twenty-eight static assertions cover
+  legacy getters, exact TOP selection, unsupported requests, empty tables,
+  arbitrary encodings and phase-correct classification. Native compilation first
+  reproduced missing `found` on nonempty tables and missing `built_in_type` on
+  empty tables; both queries are now consistent.
 - Isolated production/host builds and an installed consumer pass. The production
   consumer has Catch2 and Test Support discovery disabled; it supplies its own
   memory policy and exercises explicit clock traits. Test fixtures come from `grevir::test_support` only in host tests.
 
-With Core, Registers and their dependencies installed:
+With Base, Core, Registers and their dependencies installed:
 
 ```sh
 cmake -S . -B build -DCMAKE_PREFIX_PATH=<prefix> -DGREVIR_BUILD_COMPILE_CHECKS=ON
@@ -141,7 +178,7 @@ cmake --install build --prefix <prefix>
 Consumers use `find_package(grevir-avr CONFIG REQUIRED)` and link `grevir::avr`.
 Host tests opt in with `GREVIR_BUILD_HOST_TESTS=ON` and installed Test Support/Catch2.
 Arduino metadata is present; no Arduino sketch or target compilation is claimed.
-Concrete MCU pin/register inventories, an AVR barrier policy, waveform modes and
+Concrete MCU pin/register inventories, an AVR barrier policy, timer definitions and
 complete timer configuration,
 portable pin-backend adaptation and board mappings remain later increments. The
 original Ardoinus checkout remains unchanged.
