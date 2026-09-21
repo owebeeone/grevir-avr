@@ -81,12 +81,32 @@ struct DividerMappings<T, Ts...> {
 
 
 namespace nfp {
-constexpr bool positiveFinite(long double value) {
-  return value > 0 && value <= std::numeric_limits<long double>::max();
+template <typename T>
+constexpr bool positiveFinite(T value) {
+  return value > 0 && value <= std::numeric_limits<T>::max();
 }
 
-constexpr std::uint32_t timerCount(long double count) {
-  if (!(count >= 1 && count <= std::numeric_limits<std::uint32_t>::max())) {
+// Positive divisors only. Unlike (value + divisor - 1) / divisor, cannot overflow.
+constexpr std::uint32_t ceilDivide(std::uint32_t value, std::uint32_t divisor) {
+  return value / divisor + (value % divisor != 0);
+}
+
+// A floating conversion of an integer maximum can round UP to the first
+// unrepresentable integer. Use the exact exclusive power-of-two bound then.
+template <typename R, typename F>
+constexpr bool fitsNonnegativeInteger(F value) {
+  static_assert(std::is_integral_v<R> && std::is_floating_point_v<F>);
+  if constexpr (std::numeric_limits<F>::digits >= std::numeric_limits<R>::digits) {
+    return value >= 0 && value <= static_cast<F>(std::numeric_limits<R>::max());
+  } else {
+    const F upper = static_cast<F>(std::numeric_limits<R>::max() / 2 + 1) * F{2};
+    return value >= 0 && value < upper;
+  }
+}
+
+template <typename F>
+constexpr std::uint32_t timerCount(F count) {
+  if (!(count >= 1 && fitsNonnegativeInteger<std::uint32_t>(count))) {
     return 0;
   }
   return static_cast<std::uint32_t>(count);
@@ -101,23 +121,35 @@ template <typename T>
 constexpr std::uint32_t getClockDividerMultiple(
     T minimum_frequency, std::uint32_t timer_clock_frequency,
     std::uint8_t resolution_bits_of_top_comparator, bool phase_correct_mode) {
-  const long double frequency = static_cast<long double>(minimum_frequency);
-  if (!nfp::positiveFinite(frequency) || timer_clock_frequency == 0
+  static_assert(std::is_arithmetic_v<T>);
+  if (!nfp::positiveFinite(minimum_frequency) || timer_clock_frequency == 0
       || resolution_bits_of_top_comparator == 0 || resolution_bits_of_top_comparator > 32) {
     return InvalidClockDivider;
   }
-  const long double clock = static_cast<long double>(timer_clock_frequency)
-    / (phase_correct_mode ? 2 : 1);
-  if (frequency > clock) {
-    return InvalidClockDivider;
+  const std::uint32_t phase = phase_correct_mode ? 2 : 1;
+  const auto capacity = std::numeric_limits<std::uint32_t>::max()
+    >> (32 - resolution_bits_of_top_comparator);
+  if constexpr (std::is_integral_v<T>) {
+    if (minimum_frequency > timer_clock_frequency / phase) {
+      return InvalidClockDivider;
+    }
+    // ceil(ceil(a / b) / c) == ceil(a / (b*c)) for positive integers.
+    // Keep the odd clock tick in phase-correct mode until the final rounding.
+    const auto ticks = nfp::ceilDivide(timer_clock_frequency, phase);
+    const auto counts = nfp::ceilDivide(ticks, static_cast<std::uint32_t>(minimum_frequency));
+    return nfp::ceilDivide(counts, capacity);
+  } else {
+    const T clock = static_cast<T>(timer_clock_frequency) / static_cast<T>(phase);
+    if (minimum_frequency > clock) {
+      return InvalidClockDivider;
+    }
+    const T needed = clock / static_cast<T>(capacity) / minimum_frequency;
+    if (!(needed < static_cast<T>(InvalidClockDivider))) {
+      return InvalidClockDivider;
+    }
+    const auto whole = static_cast<std::uint32_t>(needed);
+    return whole + (static_cast<T>(whole) < needed ? 1u : 0u);
   }
-  const auto capacity = (std::uint64_t{1} << resolution_bits_of_top_comparator) - 1;
-  const long double needed = clock / capacity / frequency;
-  if (!(needed < InvalidClockDivider)) {
-    return InvalidClockDivider;
-  }
-  const auto whole = static_cast<std::uint32_t>(needed);
-  return whole + (static_cast<long double>(whole) < needed ? 1u : 0u);
 }
 
 // Traits can be supplied explicitly or through the legacy enum specialization.
@@ -142,18 +174,47 @@ constexpr R getTimerFrequency(
     T top_count, EnumT clock_divider_enum, std::uint32_t timer_clock_frequency,
     bool phase_correct_mode) {
   static_assert(std::is_arithmetic_v<R> && !std::is_same_v<R, bool>);
+  static_assert(std::is_arithmetic_v<T>);
   const auto divider = Traits::FreqMapping::findDividerMultiple(clock_divider_enum);
-  const long double count = static_cast<long double>(top_count);
-  if (!nfp::positiveFinite(count) || timer_clock_frequency == 0
+  if (!nfp::positiveFinite(top_count) || timer_clock_frequency == 0
       || divider == 0 || divider == InvalidClockDivider) {
     return R{0};
   }
-  const long double frequency = static_cast<long double>(timer_clock_frequency)
-    / (phase_correct_mode ? 2 : 1) / count / divider;
-  if (!(frequency <= std::numeric_limits<R>::max())) {
-    return R{0};
+  const std::uint32_t phase = phase_correct_mode ? 2 : 1;
+  if constexpr (std::is_integral_v<T> && std::is_integral_v<R>) {
+    if (top_count > timer_clock_frequency) {
+      return R{0}; // The frequency is below one, including for wide input types.
+    }
+    const auto count = static_cast<std::uint32_t>(top_count);
+    const auto phase_clock = timer_clock_frequency / phase;
+    const auto count_clock = phase_clock / count;
+    const auto frequency = count_clock / divider;
+    if constexpr (std::numeric_limits<R>::digits < 32) {
+      constexpr auto maximum = static_cast<std::uint32_t>(std::numeric_limits<R>::max());
+      // Preserve rejection of max + a fraction, rather than truncating it to max.
+      if (frequency > maximum || (frequency == maximum
+          && (timer_clock_frequency % phase != 0 || phase_clock % count != 0
+            || count_clock % divider != 0))) {
+        return R{0};
+      }
+    }
+    return static_cast<R>(frequency);
+  } else {
+    // Floating arithmetic is selected by the caller's input or result type.
+    using F = std::common_type_t<T, R>;
+    const F frequency = static_cast<F>(timer_clock_frequency)
+      / static_cast<F>(phase) / static_cast<F>(top_count) / static_cast<F>(divider);
+    if constexpr (std::is_integral_v<R>) {
+      if (!nfp::fitsNonnegativeInteger<R>(frequency)) {
+        return R{0};
+      }
+    } else {
+      if (!(frequency <= std::numeric_limits<R>::max())) {
+        return R{0};
+      }
+    }
+    return static_cast<R>(frequency);
   }
-  return static_cast<R>(frequency);
 }
 
 template <typename EnumT, typename Traits = TccrEnumTraits<EnumT>>
@@ -169,14 +230,23 @@ template <typename EnumT, typename Traits = TccrEnumTraits<EnumT>, typename T>
 constexpr std::uint32_t getClockTimerTop(
     EnumT clock_divider, T selected_frequency, std::uint32_t timer_clock_frequency,
     bool phase_correct_mode) {
-  const long double frequency = static_cast<long double>(selected_frequency);
-  if (!nfp::positiveFinite(frequency) || timer_clock_frequency == 0) {
+  static_assert(std::is_arithmetic_v<T>);
+  if (!nfp::positiveFinite(selected_frequency) || timer_clock_frequency == 0) {
     return 0;
   }
   const auto mapped = Traits::FreqMapping::findDividerMultiple(clock_divider);
   const auto divider = mapped == InvalidClockDivider || mapped == 0 ? 1u : mapped;
-  return nfp::timerCount(static_cast<long double>(timer_clock_frequency)
-    / (phase_correct_mode ? 2 : 1) / divider / frequency);
+  const std::uint32_t phase = phase_correct_mode ? 2 : 1;
+  if constexpr (std::is_integral_v<T>) {
+    if (selected_frequency > timer_clock_frequency) {
+      return 0;
+    }
+    return timer_clock_frequency / phase / divider
+      / static_cast<std::uint32_t>(selected_frequency);
+  } else {
+    return nfp::timerCount(static_cast<T>(timer_clock_frequency)
+      / static_cast<T>(phase) / static_cast<T>(divider) / selected_frequency);
+  }
 }
 
 } // namespace ardo::sys::avr::base

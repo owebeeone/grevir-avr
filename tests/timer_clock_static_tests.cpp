@@ -1,6 +1,13 @@
 #include "timer_clock_fixture.hpp"
 
 namespace ardo::sys::avr::base {
+static_assert(getClockDividerMultiple(1, 511, 8, true) == 2);
+static_assert(getClockDividerMultiple(1, 0xffffffffu, 32, false) == 1);
+static_assert(getClockTimerTop(EnumCS1::clk1, 1, 0xffffffffu, false) == 0xffffffffu);
+static_assert(getTimerFrequency<std::uint32_t>(1, EnumCS1::clk1, 0xffffffffu, false) == 0xffffffffu);
+static_assert(getTimerFrequency<std::uint8_t>(2, EnumCS1::clk1, 511, false) == 0);
+static_assert(getClockTimerTop(EnumCS1::clk1, 1.0f, 0xffffffffu, false) == 0);
+
 static_assert(
   getClockDivider<EnumCS1>(100000, 16000000, 16, false) == EnumCS1::clk1,
   "Clockdivider computation failed or 100kHz and 16 bit comparator.");

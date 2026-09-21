@@ -113,3 +113,60 @@ TEST_CASE("explicit clock traits support sparse and nonmonotonic selector encodi
   CHECK(getClockTimerTop<Code, Traits>(Code::eight, 1, 2048, false) == 256);
   CHECK(getTimerFrequency<double, Code, Traits>(256, Code::eight, 2048, false) == 1);
 }
+
+TEST_CASE("integer timer arithmetic handles odd clocks and full width boundaries", "[avr]") {
+  constexpr auto maximum = std::numeric_limits<std::uint32_t>::max();
+  for (bool phase : {false, true}) {
+    for (std::uint32_t clock : {1u, 2u, 3u, 509u, 511u, maximum - 1, maximum}) {
+      for (unsigned bits : {1u, 8u, 16u, 32u}) {
+        for (std::uint32_t frequency : {1u, 2u, 3u, 65535u, maximum}) {
+          auto expected = InvalidClockDivider;
+          if (frequency <= clock / (phase ? 2 : 1)) {
+            // Wide arithmetic is confined to this independent host oracle.
+            const auto capacity = (std::uint64_t{1} << bits) - 1;
+            const auto denominator = std::uint64_t{frequency} * (phase ? 2 : 1) * capacity;
+            expected = static_cast<std::uint32_t>(clock / denominator + (clock % denominator != 0));
+          }
+          CHECK(getClockDividerMultiple(frequency, clock, bits, phase) == expected);
+        }
+      }
+      for (std::uint32_t count : {1u, 2u, 3u, 65535u, maximum}) {
+        const auto expected = clock / (std::uint64_t{count} * (phase ? 2 : 1) * 8);
+        CHECK(getTimerFrequency<std::uint32_t>(count, EnumCS1::clk8, clock, phase) == expected);
+        CHECK(getClockTimerTop(EnumCS1::clk8, count, clock, phase) == expected);
+      }
+    }
+  }
+  CHECK(getClockDividerMultiple(1, 511, 8, true) == 2);
+  CHECK(getClockTimerTop(EnumCS1::clk1, 1, maximum, false) == maximum);
+  CHECK(getTimerFrequency<std::uint32_t>(1, EnumCS1::clk1, maximum, false) == maximum);
+}
+
+TEST_CASE("integer timer conversions retain sign range and fractional bounds", "[avr]") {
+  constexpr auto maximum = std::numeric_limits<std::uint32_t>::max();
+  for (std::int64_t value : {-1LL, 0LL, 4294967296LL}) {
+    CHECK(getClockDividerMultiple(value, maximum, 16, false) == InvalidClockDivider);
+    CHECK(getClockTimerTop(EnumCS1::clk1, value, maximum, false) == 0);
+    CHECK(getTimerFrequency<std::uint32_t>(value, EnumCS1::clk1, maximum, false) == 0);
+  }
+  CHECK(getClockDividerMultiple(std::uint64_t{1} << 32, maximum, 16, false) == InvalidClockDivider);
+  CHECK(getTimerFrequency<std::uint8_t>(2, EnumCS1::clk1, 510, false) == 255);
+  CHECK(getTimerFrequency<std::uint8_t>(2, EnumCS1::clk1, 511, false) == 0);
+  CHECK(getTimerFrequency<std::int8_t>(2, EnumCS1::clk1, 254, false) == 127);
+  CHECK(getTimerFrequency<std::int8_t>(2, EnumCS1::clk1, 255, false) == 0);
+  CHECK(getTimerFrequency<std::uint8_t>(1, EnumCS1::clk1, 511, true) == 0);
+  CHECK(getTimerFrequency<std::uint8_t>(1, EnumCS1::clk8, 2041, false) == 0);
+}
+
+TEST_CASE("explicit floating timer paths reject rounded integer overflow bounds", "[avr]") {
+  constexpr auto maximum = std::numeric_limits<std::uint32_t>::max();
+  CHECK(getClockTimerTop(EnumCS1::clk1, 1.0f, maximum, false) == 0);
+  CHECK(getTimerFrequency<std::uint32_t>(1.0f, EnumCS1::clk1, maximum, false) == 0);
+  CHECK(getClockDividerMultiple(1.0f, maximum, 1, false) == InvalidClockDivider);
+  CHECK(getClockTimerTop(EnumCS1::clk1, 1.0, maximum, false) == maximum);
+  CHECK(getTimerFrequency<std::uint32_t>(1.0, EnumCS1::clk1, maximum, false) == maximum);
+  CHECK(getTimerFrequency<std::int8_t>(1.0f, EnumCS1::clk1, 128, false) == 0);
+  CHECK(getTimerFrequency<std::uint8_t>(1.0f, EnumCS1::clk1, 255, false) == 255);
+  CHECK(getTimerFrequency<float>(3, EnumCS1::clk1, 3, true) == 0.5f);
+  CHECK(getClockTimerTop(EnumCS1::clk8, 0.5f, 2048, false) == 512);
+}

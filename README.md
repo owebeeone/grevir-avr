@@ -96,9 +96,17 @@ lookup first. `getTimerFrequency` returns zero for an unmapped selector.
 These helpers preserve the legacy count model `clock / phase_factor / divider /
 frequency`. The result is not a complete waveform-specific hardware TOP encoding;
 mode-dependent adjustments belong to the later mode/configuration extraction.
-Calculations use widened arithmetic to avoid intermediate integer overflow and
-checked conversion to the result type. Target floating-point behavior, size and
-runtime cost are unvalidated. No AVR compiler validation is performed.
+Integer inputs and integer results use 32-bit integer arithmetic. Divider
+selection uses successive ceiling divisions and a 32-bit capacity mask, avoiding
+overflowing products while retaining odd clock ticks until rounding is complete.
+Count and frequency results use successive floor divisions; narrow result types
+still reject values above their maximum, including a maximum plus a fraction.
+Explicit floating inputs/results select floating arithmetic at their common
+floating type, without unconditional promotion to `long double`. Its precision
+therefore follows the selected type. Integer conversion bounds reject rounded
+out-of-range values before casting, including `float` rounding `UINT32_MAX` up to
+2^32. Target floating-point behavior, size and runtime cost remain unvalidated.
+No AVR compiler validation is performed.
 
 ## Validation and use
 
@@ -106,14 +114,18 @@ Apple Clang 21 / arm64 macOS / C++23 checks:
 
 - Six public headers compile independently, alongside address/type assertions and
   a compile-only volatile-access user.
-- Sixteen host cases pass, with 136 assertions in seeded random order. They cover
+- Nineteen host cases pass. They cover
   offsets, widths, preserved bits, access order, explicit barrier scopes, reads,
   directional wrappers and open-drain configuration. Dynamic ordering first failed
   for both output levels and now agrees with typed configuration.
-- Eleven legacy clock static assertions compile. One valid and seven rejected
+- Eleven legacy and six arithmetic-boundary clock static assertions compile. One valid and seven rejected
   mapping probes check divider values/order, duplicate selectors and mixed enums,
   including faults deeper in a table. Boundary, independent capacity-model and
   invalid-input cases pass; computed values are applied to synthetic registers.
+- Added arithmetic cases cover odd clocks, full 32-bit boundaries, signed/wide
+  inputs, narrow output limits and explicitly selected floating-point conversion
+  bounds. Optimized native IR for dynamic 32-bit divider/count/frequency calls
+  contains no floating-point or 64-bit arithmetic; this is not AVR codegen proof.
 - Isolated production/host builds and an installed consumer pass. The production
   consumer has Catch2 and Test Support discovery disabled; it supplies its own
   memory policy and exercises explicit clock traits. Test fixtures come from `grevir::test_support` only in host tests.
