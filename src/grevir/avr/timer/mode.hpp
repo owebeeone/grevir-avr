@@ -2,10 +2,10 @@
 
 #include <grevir/base/meta/tuple_types.hpp>
 #include <grevir/base/optional.hpp>
-#include <cstdint>
-#include <limits>
-#include <tuple>
-#include <type_traits>
+#include <grevir/base/compat/cstdint.hpp>
+#include <grevir/base/compat/limits.hpp>
+#include <grevir/base/compat/tuple.hpp>
+#include <grevir/base/compat/type_traits.hpp>
 
 namespace ardo::sys::avr::base {
 

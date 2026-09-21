@@ -1,8 +1,8 @@
 #pragma once
 
 #include <grevir/avr/generated/atmega328p/timer_gpio.hpp>
-#include <cstdint>
-#include <type_traits>
+#include <grevir/base/compat/cstdint.hpp>
+#include <grevir/base/compat/type_traits.hpp>
 
 namespace ardo::sys::avr::arch_atmega328p::nfp {
 

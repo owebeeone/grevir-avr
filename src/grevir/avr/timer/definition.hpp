@@ -3,8 +3,8 @@
 #include <grevir/avr/timer/mode.hpp>
 #include <grevir/base/meta/type_algorithms.hpp>
 #include <grevir/registers/apply.hpp>
-#include <cstdint>
-#include <tuple>
+#include <grevir/base/compat/cstdint.hpp>
+#include <grevir/base/compat/tuple.hpp>
 
 namespace ardo::sys::avr::base {
 

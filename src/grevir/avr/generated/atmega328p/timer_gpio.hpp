@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdint>
+#include <grevir/base/compat/cstdint.hpp>
 
 #include <grevir/avr/register_definitions.hpp>
 

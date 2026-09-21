@@ -1,8 +1,8 @@
 #pragma once
 
-#include <cstdint>
-#include <limits>
-#include <type_traits>
+#include <grevir/base/compat/cstdint.hpp>
+#include <grevir/base/compat/limits.hpp>
+#include <grevir/base/compat/type_traits.hpp>
 
 namespace ardo::sys::avr::base {
 
