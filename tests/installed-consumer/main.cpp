@@ -1,5 +1,6 @@
 #include <GrevirAVR.h>
 #include <grevir/avr/devices/atmega328p/timers.hpp>
+#include <grevir/avr/devices/atmega328p/pwm_backend.hpp>
 #include <array>
 #include <cstring>
 
@@ -93,6 +94,19 @@ using Device = avr::arch_atmega328p::TimerBindings<Memory, Barrier>;
 using DeviceConfig = Device::Timer1::FrequencyAccurate<1000, 16000000,
   avr::base::TimerMode::pwm, avr::base::TimerPwmMode::fast, avr::base::TimerTop::icr>;
 using DeviceOutputs = Device::Timer1::PwmPinConfiguration<DeviceConfig, OutputSettings>;
+namespace pwm = grevir::pwm;
+namespace pwm_device = pwm::atmega328p;
+using Request = pwm::Instance<"motor",pwm::PwmRequest<"pwm",
+  pwm::Frequency<pwm::Hertz<1000>,pwm::Exact>,pwm::DutyStepAtMost<1,256>,
+  pwm::For<pwm::Target::avr,pwm::Pin<pwm_device::PB1>,pwm::avr::TopFromIcr>,
+  pwm::For<pwm::Target::esp32,pwm::Pin<18>,pwm::esp32::ApbClock>>>;
+template <typename Plan>
+struct Motor : ardo::ModuleBase<ardo::Parameters<typename Plan::template Pwm<"motor">>> {
+  static void runSetup() { Plan::template Pwm<"motor">::write(1,4); }
+};
+using PortableApp = grevir::AllocatedApplication<pwm_device::Backend<Device,16000000>,
+  grevir::RequestedModule<setl::TypeArgs<Request>,Motor>>;
+
 }
 
 int main() {
@@ -159,5 +173,10 @@ int main() {
       || (Memory::bytes[0x24] & 2) == 0) {
     return 13;
   }
+  Memory::count = 0;
+  PortableApp::runSetup();
+  if (Memory::read<std::uint16_t>(0x86) != 15999 || Memory::read<std::uint16_t>(0x88) != 3999
+      || (Memory::bytes[0x80] & 0xc0) != 0x80) { return 14; }
+  PortableApp::runLoop();
   return 0;
 }

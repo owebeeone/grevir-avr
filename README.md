@@ -307,16 +307,16 @@ strobes, and assert register effects and pin routes. They do not model PWM wavef
 interrupt execution, electrical pins or Timer2 asynchronous synchronization. Current
 configuration coverage assumes synchronous timer clocks, enabled peripherals and
 caller-managed ownership. Waveform-specific TOP conversion is implemented and
-checked on the host; the experimental portable adapter generates fast-PWM
+checked on the host; the installed portable adapter generates fast-PWM
 candidates from all three declarations and applies them through these bindings. No target compiler or hardware validation was run.
 
 ## Validation and use
 
 Apple Clang 21 / arm64 macOS / C++23 checks:
 
-- Eighteen public headers compile independently, alongside address/type assertions and
+- Twenty-one public headers compile independently, alongside address/type assertions and
   a compile-only volatile-access user.
-- Forty-nine host cases pass. They cover
+- Fifty host cases pass. They cover
   offsets, widths, preserved bits, access order, explicit barrier scopes, reads,
   directional wrappers and open-drain configuration. Dynamic ordering first failed
   for both output levels and now agrees with typed configuration.
@@ -373,8 +373,18 @@ cmake --install build --prefix <prefix>
 Consumers use `find_package(grevir-avr CONFIG REQUIRED)` and link `grevir::avr`.
 Host tests opt in with `GREVIR_BUILD_HOST_TESTS=ON` and installed Test Support/Catch2.
 Arduino metadata is present; no Arduino sketch or target compilation is claimed.
-Other device/peripheral inventories, a target AVR barrier implementation,
-installed portable backend integration and board mappings remain later increments.
-An experimental end-to-end Timer0/1/2 fast-PWM adapter lives in the workspace
-`experiments/timer-allocation/`; other features remain TBD. The
+Other device/peripheral inventories, a target AVR barrier implementation and
+board mappings remain later increments. The installed Timer0/1/2 fast-PWM adapter
+is under `devices/atmega328p/pwm_backend.hpp`; the experiment now forwards to it.
+Other timer features remain TBD. The
 original Ardoinus checkout remains unchanged.
+
+## Installed portable PWM integration
+
+The fixed-frequency ATmega328P PWM MVP now uses installed Core, Peripherals and AVR
+headers. Core collects module requests and existing resource claims; AVR supplies
+candidates and typed endpoints. Application setup initializes the selected owners
+before parameter/module callbacks. See the workspace's
+`dev-docs/GrevirPwmIntegration.md` for the complete example, resource identity rules,
+startup preconditions and current limits. AVR compiler/hardware validation remains
+on hold; native package installation does not establish MCU toolchain support.

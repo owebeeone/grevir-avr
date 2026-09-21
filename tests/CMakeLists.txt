@@ -13,6 +13,13 @@ if(GREVIR_BUILD_COMPILE_CHECKS)
   target_link_libraries(grevir_avr_compile PRIVATE grevir::avr)
   set_target_properties(grevir_avr_compile PROPERTIES CXX_EXTENSIONS OFF)
   if(CMAKE_CXX_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU)$")
+    add_custom_target(grevir_portable_pwm_checks ALL
+      COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+        "-DINCLUDE_DIRS=$<TARGET_PROPERTY:grevir_avr_compile,INCLUDE_DIRECTORIES>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/portable_pwm_probe.cpp"
+        "-DLOG_DIR=${CMAKE_CURRENT_BINARY_DIR}/portable-pwm-results"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_portable_pwm.cmake"
+      VERBATIM)
     add_custom_target(grevir_timer_clock_checks ALL
       COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
         "-DINCLUDE_DIR=${PROJECT_SOURCE_DIR}/src"
@@ -26,7 +33,7 @@ if(GREVIR_BUILD_HOST_TESTS)
   if(NOT TARGET grevir::test_support)
     find_package(grevir-test-support CONFIG REQUIRED)
   endif()
-  add_executable(grevir_avr_runtime gpio_test.cpp register_test.cpp timer_clock_test.cpp timer_clock_static_tests.cpp
+  add_executable(grevir_avr_runtime portable_pwm_test.cpp gpio_test.cpp register_test.cpp timer_clock_test.cpp timer_clock_static_tests.cpp
     timer_mode_test.cpp timer_mode_static_tests.cpp timer_definition_test.cpp timer_definition_static_tests.cpp
     timer_configuration_test.cpp timer_configuration_static_tests.cpp timer_output_test.cpp timer_output_static_tests.cpp atmega328p_test.cpp atmega328p_static_tests.cpp)
   target_link_libraries(grevir_avr_runtime PRIVATE grevir::avr grevir::test_support Catch2::Catch2WithMain)
