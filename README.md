@@ -1,9 +1,9 @@
 # Grevir AVR
 
-AVR register/GPIO and timer clock/mode/definition extraction from Ardoinus. This package depends on Grevir
+AVR register/GPIO and timer clock/mode/definition/configuration/output extraction from Ardoinus. This package depends on Grevir
 Base, Registers and Core, retains the `ardo::sys::avr` namespaces, and uses explicit
-access and synchronization policies. It includes no Arduino dependency or complete
-device inventory. AVR compiler and hardware validation remain on hold.
+access and synchronization policies. It includes an explicitly selected ATmega328P timer/GPIO binding and no Arduino
+dependency. Other peripherals and a full device resource graph remain pending. AVR compiler and hardware validation remain on hold.
 
 ## Extracted source and interfaces
 
@@ -16,8 +16,18 @@ device inventory. AVR compiler and hardware validation remain on hold.
 | `timer/clock.hpp` | Divider maps and count/frequency computations consolidated from both legacy timer implementations |
 | `timer/mode.hpp` | Waveform metadata, compile-time selection and runtime metadata lookup, with caller-supplied mode tables |
 | `timer/definition.hpp` | Capture/noise controls, output-compare metadata, TOP access and composition of a timer's register interfaces |
+| `timer/configuration.hpp` | PWM settings, compile-time calculations, setup and checked runtime frequency changes |
+| `timer/output.hpp` | PWM output application, duty adjustment, pin composition and the reusable timer facade |
+| `generated/atmega328p/timer_gpio.hpp` | Raw timer/GPIO fact subset selected from the legacy generated header |
+| `devices/atmega328p/timer_modes.hpp` | Concrete clock and waveform enums/tables/traits |
+| `devices/atmega328p/timer_fields.hpp` | Concrete timer bit fields and register formats |
+| `devices/atmega328p/timer_registers.hpp` | Access-policy-bound timer register aliases |
+| `devices/atmega328p/timer_access.hpp` | Byte sequencing, caller barriers and interrupt-flag clear semantics |
+| `devices/atmega328p/gpio_fields.hpp` | B/C/D GPIO register fields and the 23 real pin identities |
+| `devices/atmega328p/timers.hpp` | Timer0/1/2 definitions, output routes and timer inventory |
 
-All headers live under `grevir/avr/`; `<GrevirAVR.h>` is the public entry point.
+All headers live under `grevir/avr/`; `<GrevirAVR.h>` is the generic public entry point.
+Include `<grevir/avr/devices/atmega328p/timers.hpp>` explicitly for that device.
 The duplicate generic GPIO bodies are consolidated. Core already supplies their
 `Dependency`/`ResourceType` graph; no duplicate resource graph is introduced.
 
@@ -97,7 +107,8 @@ lookup first. `getTimerFrequency` returns zero for an unmapped selector.
 
 These helpers preserve the legacy count model `clock / phase_factor / divider /
 frequency`. The result is not a complete waveform-specific hardware TOP encoding;
-mode-dependent adjustments belong to the later mode/configuration extraction.
+waveform-specific hardware count adjustments remain deferred; configuration
+currently preserves this inherited model.
 Integer inputs and integer results use 32-bit integer arithmetic. Divider
 selection uses successive ceiling divisions and a 32-bit capacity mask, avoiding
 overflowing products while retaining odd clock ticks until rounding is complete.
@@ -135,9 +146,8 @@ Register-supplied TOP entries default to the explicitly 32-bit metadata marker
 inspect `timer_top` before treating `built_in_top` as an actual count. The helper
 performs no frequency arithmetic and introduces no floating-point or 64-bit work.
 
-ATmega328P waveform enums/tables and six legacy assertions live only in host
-fixtures for this increment. Device register encodings/inventory, concrete device
-timer definitions, configuration and runtime output application remain separate work.
+ATmega328P production enums/tables now live in the explicit device binding.
+The earlier host fixtures remain independent regression data for the reusable layer.
 
 ## Timer definitions and TOP access
 
@@ -172,13 +182,136 @@ Access policies still own synchronization and hardware read/write semantics.
 No register-read atomicity, physical capture behavior or noise filtering is
 established by the host fixture. No floating-point or 64-bit arithmetic is added.
 
+## Timer configuration
+
+`TimerSettings<pwm, PwmMode, Top>` selects programmable OCRA/ICR TOP;
+`TimerBuiltInSettings<pwm, PwmMode, Bits>` selects fixed TOP. Compose either with
+`TimerConfiguration<Definition, Frequency, Clock, Settings, ClockTraits>`.
+The final traits argument is optional and defaults to `TccrEnumTraits<ClockEnum>`;
+waveform traits come from the definition. Legacy primitive names
+`TimerPwmConfigutation` and `TimerPwmBuiltinTopConfigutation` retain their spelling.
+
+Compile-time requests must have a compatible mode, supported divider and valid
+count/resolution. Programmable modes must match exactly one table entry. Divider
+selection uses the smaller logical capacity of counter and TOP fields, preventing
+narrowing into a smaller TOP register. Built-in resolution must fit the counter
+and OCRA field. Count fields are unsigned scalars with contiguous logical bits.
+`actual_divider` now reports the selected prescaler, correcting an inherited
+assignment of the base clock frequency.
+
+`setupTimer()` applies the computed settings. `setFrequency(value)` returns the
+TOP count, or zero for invalid/unrepresentable requests without any register I/O.
+Programmable counts below two are also rejected. The low-level programmable
+configuration applies clock/mode only; `TimerConfiguration` additionally writes
+TOP after validation, at the field's native width. Built-in configuration writes
+only clock/mode. Integer calls retain integer arithmetic; floating input/results
+remain explicit choices. No implicit floating or runtime 64-bit intermediates were
+introduced. Clock/mode then TOP ordering is retained; live changes are not atomic
+or demonstrated glitch-free, and hardware buffering/synchronization is not modeled.
+
+`getFrequency<Result>()` uses live register settings. The primitive overload can
+accept an explicit TOP and clock. Unknown mode or unavailable TOP returns the
+legacy `static_cast<Result>(-1)` sentinel (maximum for unsigned results); stopped
+or unmapped clocks return zero. Optional metadata is checked before use. These
+calculations retain the inherited count model, not hardware-validated PWM timing.
+The `OutputPin` alias is implemented by `timer/output.hpp`, included by the aggregate header.
+
+## Timer output application
+
+`TimerOutputPinSettings<Channel, Invert>` selects an output compare channel and
+its legacy polarity. `Config::OutputPin<Settings>` exposes that output;
+`TimerPwmPinConfiguration<Config, Settings...>` composes outputs with timer setup
+and frequency updates. Outputs can be selected by argument index or OCR channel.
+Its `pwmWrite(Settings{}, value)` now routes to the selected output with the live
+TOP, correcting the inherited call to a nonexistent configuration method.
+`Timer<Definition, ClockTraits>` exposes the legacy configuration aliases and a
+checked `getTopCount()` (zero for unavailable metadata/TOP). Explicit clock traits
+are optional; mode traits and register policies remain caller-provided.
+
+Output compare encodings come from `COM8::type`, which must supply `clear`, `set`
+and `disconnect`. GPIO comes from `OutputCompare::GpioDef`. No device enum is
+hardcoded. Legacy polarity is retained: `invert_output=true` selects clear-on-compare,
+low at zero and high at full duty; `false` selects set-on-compare and the opposite
+endpoint levels. This documents the inherited naming rather than reversing outputs.
+
+Count fields have at most 16 logical bits for this AVR output implementation.
+They must fit every TOP the chosen configuration can generate. Repeated channels,
+repeated GPIO types, and using OCRA for both TOP and duty are compile-time errors.
+This is local composition validation, not a complete physical-resource inventory:
+callers must provide consistent identities for aliases of the same hardware pin.
+The generic cross-MCU APIs are unaffected by the AVR count bound.
+
+`pwmWrite(value, top)` clamps finite values outside the duty interval to GPIO
+endpoints. Zero/negative/unrepresentable TOP and nonfinite values cause no IO.
+`pwmWritef(float, top)` explicitly selects fractional arithmetic and checks bounds
+before conversion, fixing the inherited ill-formed narrowing initializer. Duty
+counts truncate; a result quantized to zero becomes the GPIO endpoint. The raw
+`pwmWriteAbsoluteValue` only checks field capacity and does not manage COM/GPIO.
+
+`pwmAdjust(old, new)` now uses floor(old_compare * new / old), with a 32-bit
+product of factors bounded by 65535. It widens before multiplication, avoiding
+16-bit promotion overflow without floating or 64-bit work. A stale compare above
+old TOP saturates to the full-duty endpoint. Unchanged/invalid TOP or a COM mode
+other than this output's configured PWM mode causes no adjustment. The composed
+frequency setter skips adjustment on rejection; it can read old TOP, but writes
+nothing for an invalid request. Fixed TOP changes leave duty counts unchanged.
+
+Compare values are written before connecting PWM, endpoint latches before
+disconnecting PWM, and initial output settings before enabling DDR. Host traces
+verify this order and preservation of other channels. They do not establish
+atomic updates, waveform timing, glitch-free transitions, timer buffering or
+interrupt synchronization. Actual target access policies still own those details.
+
+## ATmega328P timer and GPIO bindings
+
+Include `grevir/avr/devices/atmega328p/timers.hpp` and instantiate
+`ardo::sys::avr::arch_atmega328p::TimerBindings<ByteAccess, Barrier>`.
+`Timer0`, `Timer1`, `Timer2` and `Timers` expose the three timer interfaces;
+`Gpio` contains the physical port identities such as `ppPB1` and `ppPD6`.
+No access/barrier defaults, CPU clock, board reservation or frequency preset is
+injected. Supply those choices explicitly. `GpioBindings<ByteAccess, Barrier>`
+is also independently usable. PC7 is not invented to fill an eight-bit port.
+
+The legacy clock, mode, COM and register-field groups match between both source
+headers. They now have one device implementation split by responsibility. Raw
+facts remain under `generated/`; this is a selected timer/GPIO subset, not a full
+regeneration. All 276 selected bit/address facts match the independently retrieved
+[avr-libc ATmega328P definitions](https://github.com/avrdudes/avr-libc/blob/main/include/avr/iom328p.h).
+The full raw-device assignment remains pending in the migration ledger.
+
+Timer0 outputs bind to PD6/PD5, Timer1 to PB1/PB2, and Timer2 to PB3/PD3.
+Timer1 supplies ICR/capture; Timer0/2 do not. Definitions include native TCCRnB
+aliases so their force-compare fields can be selected. Timer1 capture interrupt
+fields and Timer2's counter-update status are included, correcting omissions in
+the old field inventories. Old board-specific demonstration aliases are replaced
+by the reusable configuration aliases, so Timer2 no longer embeds a preset that
+claims OCRA as both TOP and an output.
+
+The timer adapter calls `ByteAccess` with eight-bit operations and final memory
+addresses. Synthetic TCCRnA/B fields are assembled explicitly, independent of host
+endianness; masked changes touch only affected bytes. Timer1 words read low/high
+and write high/low. Word operations and masked timer updates use the supplied
+RAII barrier. Timer interrupt flags use write-one-to-clear commands without first
+reading and echoing unrelated flags. These choices follow the timer-register and
+16-bit access sections of the [Microchip ATmega328P datasheet](https://ww1.microchip.com/downloads/en/devicedoc/atmel-7810-automotive-microcontrollers-atmega328p_datasheet.pdf)
+(sections 14.9.7, 15.3, 15.11.9 and 17.11.7 in 7810D). The caller must supply a
+working, nestable interrupt-state-preserving barrier for target use.
+
+Host fixtures model Timer1's shared high-byte latch, flag clearing and force-compare
+strobes, and assert register effects and pin routes. They do not model PWM waveforms,
+interrupt execution, electrical pins or Timer2 asynchronous synchronization. Current
+configuration coverage assumes synchronous timer clocks, enabled peripherals and
+caller-managed ownership. Frequency calculations still use the inherited count
+model; waveform-specific hardware TOP conversion remains work before claiming
+accurate hardware frequencies. No target compiler or hardware validation was run.
+
 ## Validation and use
 
 Apple Clang 21 / arm64 macOS / C++23 checks:
 
-- Eight public headers compile independently, alongside address/type assertions and
+- Seventeen public headers compile independently, alongside address/type assertions and
   a compile-only volatile-access user.
-- Twenty-eight host cases pass. They cover
+- Forty-nine host cases pass. They cover
   offsets, widths, preserved bits, access order, explicit barrier scopes, reads,
   directional wrappers and open-drain configuration. Dynamic ordering first failed
   for both output levels and now agrees with typed configuration.
@@ -201,9 +334,27 @@ Apple Clang 21 / arm64 macOS / C++23 checks:
   native-width TOP reads, invalid built-in requests and restricted/empty inventories.
   Thirteen static assertions and compile-only reads cover capabilities, field types,
   source composition, result types and explicit traits without executing MMIO.
+- Six configuration cases check ICR/OCRA and built-in setup, preserved fields,
+  native write widths, rejected updates without IO, narrower TOPs and checked live
+  frequency reads. Twelve static assertions check divider/count/capacity results.
+  A standalone valid/seven-rejection probe checks invalid frequencies, counts,
+  resolution and missing modes. Dynamic integer configuration host IR contains no
+  floating or 64-bit arithmetic; this does not establish target instruction cost.
+- Eight output cases cover endpoint polarity, write order, fractional conversion,
+  integer rescaling boundaries, disconnected channels, frequency rejection, checked
+  TOP reads, 8-/16-bit access and OCRA-TOP with OCRB output. Ten static assertions
+  and compile-only MMIO uses cover aliases and composition. One valid/seven rejected
+  standalone probes check duplicate channels/GPIO, TOP conflicts, missing configured
+  outputs and count capacity. Native UBSan/float-cast-overflow checks pass; dynamic
+  integer duty/adjustment IR has no floating or 64-bit arithmetic.
+- Seven concrete-device cases and nineteen static assertions check three timers,
+  physical pin routes, actual byte addresses, word sequencing/barriers, W1C flags,
+  native force-compare access and capture/status fields. One valid/three rejected
+  native probes check unavailable capture/modes and OCRA TOP/output conflicts.
+  The installed consumer also configures and updates the concrete Timer1 binding.
 - Isolated production/host builds and an installed consumer pass. The production
   consumer has Catch2 and Test Support discovery disabled; it supplies its own
-  memory policy and exercises explicit clock/mode traits and timer TOP access.
+  memory policy and exercises explicit clock/mode traits, timer TOP access, configuration and output composition with custom COM encodings.
   Test fixtures come from `grevir::test_support` only in host tests.
 
 With Base, Core, Registers and their dependencies installed:
@@ -217,7 +368,7 @@ cmake --install build --prefix <prefix>
 Consumers use `find_package(grevir-avr CONFIG REQUIRED)` and link `grevir::avr`.
 Host tests opt in with `GREVIR_BUILD_HOST_TESTS=ON` and installed Test Support/Catch2.
 Arduino metadata is present; no Arduino sketch or target compilation is claimed.
-Concrete MCU pin/register/timer inventories, an AVR barrier policy and
-complete timer configuration,
-portable pin-backend adaptation and board mappings remain later increments. The
+Other device/peripheral inventories, a target AVR barrier implementation,
+waveform-specific TOP conversion, portable backend adaptation and board mappings
+remain later increments. The
 original Ardoinus checkout remains unchanged.

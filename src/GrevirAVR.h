@@ -6,3 +6,6 @@
 #include <grevir/avr/timer/clock.hpp>
 #include <grevir/avr/timer/mode.hpp>
 #include <grevir/avr/timer/definition.hpp>
+
+#include <grevir/avr/timer/configuration.hpp>
+#include <grevir/avr/timer/output.hpp>
