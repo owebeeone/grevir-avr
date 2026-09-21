@@ -1,6 +1,6 @@
 # Grevir AVR
 
-AVR register/GPIO and timer clock/mode extraction from Ardoinus. This package depends on Grevir
+AVR register/GPIO and timer clock/mode/definition extraction from Ardoinus. This package depends on Grevir
 Base, Registers and Core, retains the `ardo::sys::avr` namespaces, and uses explicit
 access and synchronization policies. It includes no Arduino dependency or complete
 device inventory. AVR compiler and hardware validation remain on hold.
@@ -15,6 +15,7 @@ device inventory. AVR compiler and hardware validation remain on hold.
 | `gpio.hpp` | Base GPIO header plus directional wrappers from `ardo_supplemental_atmega328p_dev.h` |
 | `timer/clock.hpp` | Divider maps and count/frequency computations consolidated from both legacy timer implementations |
 | `timer/mode.hpp` | Waveform metadata, compile-time selection and runtime metadata lookup, with caller-supplied mode tables |
+| `timer/definition.hpp` | Capture/noise controls, output-compare metadata, TOP access and composition of a timer's register interfaces |
 
 All headers live under `grevir/avr/`; `<GrevirAVR.h>` is the public entry point.
 The duplicate generic GPIO bodies are consolidated. Core already supplies their
@@ -135,16 +136,49 @@ inspect `timer_top` before treating `built_in_top` as an actual count. The helpe
 performs no frequency arithmetic and introduces no floating-point or 64-bit work.
 
 ATmega328P waveform enums/tables and six legacy assertions live only in host
-fixtures for this increment. Device register encodings/inventory, complete timer
-definitions, configuration and runtime output application remain separate work.
+fixtures for this increment. Device register encodings/inventory, concrete device
+timer definitions, configuration and runtime output application remain separate work.
+
+## Timer definitions and TOP access
+
+`TimerDefinition` composes caller-provided register/field types, output-compare
+metadata, capture capabilities and TOP sources. `TimerCapture<void, void, void>`
+represents absent capture; `TimerInputNoiseCanceller<void>` supplies empty setting
+appliers. Present capture provides edge/noise setting appliers and adds ICR to
+the timer's TOP sources. Output-compare entries retain the A/B tuple ordering.
+These primitives neither allocate timers nor register interrupt handlers.
+
+The optional final `ModeTraits` argument supplies `Modes`; omitted, it uses the
+legacy `WgmEnumTraits<WaveformEnum>` specialization. No concrete MCU inventory is
+required by the reusable definition. `TimerDefTopRegister<ocra/icr>` identifies
+the writable field; built-in TOP has no writable-register specialization.
+
+`get_timer_top(source)` returns `setl::Optional<uint32_t>`. OCRA/ICR queries read
+only that source at its field's native width. A built-in query reads the waveform
+field and checks its metadata; the overload accepting a waveform enum avoids that
+read. For register sources the supplied waveform is ignored, preserving legacy
+behavior. Unsupported sources and empty source lists return an empty optional
+without I/O. A genuine register value of zero remains present.
+
+Built-in queries now return empty for unknown/reserved waveform codes and for
+waveforms whose TOP comes from OCRA/ICR. The old code discarded the metadata's
+presence flag and could report a present zero or marker. The lower-level
+`TopGetter<Definition, built_in>::get` consequently returns an optional too;
+OCRA/ICR getters retain native-width integer returns. Explicit result dispatch
+also fixes the old compile failures for OCRA-only and empty TOP-source lists.
+This does not change Base's general optional or value-tuple algorithms.
+
+Access policies still own synchronization and hardware read/write semantics.
+No register-read atomicity, physical capture behavior or noise filtering is
+established by the host fixture. No floating-point or 64-bit arithmetic is added.
 
 ## Validation and use
 
 Apple Clang 21 / arm64 macOS / C++23 checks:
 
-- Seven public headers compile independently, alongside address/type assertions and
+- Eight public headers compile independently, alongside address/type assertions and
   a compile-only volatile-access user.
-- Twenty-three host cases pass. They cover
+- Twenty-eight host cases pass. They cover
   offsets, widths, preserved bits, access order, explicit barrier scopes, reads,
   directional wrappers and open-drain configuration. Dynamic ordering first failed
   for both output levels and now agrees with typed configuration.
@@ -163,9 +197,14 @@ Apple Clang 21 / arm64 macOS / C++23 checks:
   arbitrary encodings and phase-correct classification. Native compilation first
   reproduced missing `found` on nonempty tables and missing `built_in_type` on
   empty tables; both queries are now consistent.
+- Five definition cases verify control-bit preservation, absent-capability no-ops,
+  native-width TOP reads, invalid built-in requests and restricted/empty inventories.
+  Thirteen static assertions and compile-only reads cover capabilities, field types,
+  source composition, result types and explicit traits without executing MMIO.
 - Isolated production/host builds and an installed consumer pass. The production
   consumer has Catch2 and Test Support discovery disabled; it supplies its own
-  memory policy and exercises explicit clock traits. Test fixtures come from `grevir::test_support` only in host tests.
+  memory policy and exercises explicit clock/mode traits and timer TOP access.
+  Test fixtures come from `grevir::test_support` only in host tests.
 
 With Base, Core, Registers and their dependencies installed:
 
@@ -178,7 +217,7 @@ cmake --install build --prefix <prefix>
 Consumers use `find_package(grevir-avr CONFIG REQUIRED)` and link `grevir::avr`.
 Host tests opt in with `GREVIR_BUILD_HOST_TESTS=ON` and installed Test Support/Catch2.
 Arduino metadata is present; no Arduino sketch or target compilation is claimed.
-Concrete MCU pin/register inventories, an AVR barrier policy, timer definitions and
+Concrete MCU pin/register/timer inventories, an AVR barrier policy and
 complete timer configuration,
 portable pin-backend adaptation and board mappings remain later increments. The
 original Ardoinus checkout remains unchanged.

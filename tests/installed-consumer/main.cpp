@@ -59,6 +59,19 @@ static_assert(WaveModes::found<avr::base::TimerMode::pwm, avr::base::TimerPwmMod
   avr::base::TimerTop::built_in>);
 static_assert(std::is_same_v<WaveModes::built_in_type<avr::base::TimerMode::pwm,
   avr::base::TimerPwmMode::fast, 255>, FixedMode>);
+
+struct WaveTraits { using Modes = WaveModes; };
+using WaveBits = setl::BitsRW<WaveCode, 4, 3, 2, 1, 0>;
+using CompareBits = setl::BitsRW<std::uint8_t>;
+using WaveRegister = avr::base::Register<setl::BitFields<WaveBits>,
+  avr::nfp::MemRegisterDef<std::uint8_t, 10>, Binding::IoAccessor>;
+using CompareRegister = avr::base::Register<setl::BitFields<CompareBits>,
+  avr::nfp::MemRegisterDef<std::uint8_t, 11>, Binding::IoAccessor>;
+using Compare = avr::base::OutputCompare<CompareBits, void, void, void, void, void>;
+using TimerDefinition = avr::base::TimerDefinition<WaveBits, void, void, void, CompareBits,
+  std::tuple<Compare>, avr::base::TimerCapture<void, void, void>,
+  std::tuple<WaveRegister, CompareRegister>,
+  setl::ValueTuple<avr::base::TimerTop, avr::base::TimerTop::built_in, avr::base::TimerTop::ocra>, WaveTraits>;
 }
 
 int main() {
@@ -86,6 +99,18 @@ int main() {
   }
   if (WaveModes::getParamFor<avr::base::WaveformGeneratorModeParam::timer_top>(static_cast<WaveCode>(255)).is_present()) {
     return 6;
+  }
+  Memory::write<std::uint8_t>(10, 31);
+  Memory::write<std::uint8_t>(11, 201);
+  const auto fixed_top = TimerDefinition::get_timer_top(avr::base::TimerTop::built_in);
+  const auto compare_top = TimerDefinition::get_timer_top(avr::base::TimerTop::ocra);
+  if (!fixed_top.is_present() || fixed_top.get() != 255
+      || !compare_top.is_present() || compare_top.get() != 201) {
+    return 7;
+  }
+  if (TimerDefinition::get_timer_top(avr::base::TimerTop::icr).is_present()
+      || TimerDefinition::get_timer_top(avr::base::TimerTop::built_in, WaveCode::capture).is_present()) {
+    return 8;
   }
   return 0;
 }
