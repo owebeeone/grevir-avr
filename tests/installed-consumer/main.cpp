@@ -82,7 +82,7 @@ using TimerDefinition = avr::base::TimerDefinition<WaveBits, ClockBits, void, vo
 using FixedSettings = avr::base::TimerBuiltInSettings<avr::base::TimerMode::pwm,
   avr::base::TimerPwmMode::fast, 8>;
 using Configuration = avr::base::TimerConfiguration<TimerDefinition, 1, 256, FixedSettings, ClockTraits>;
-static_assert(Configuration::Config::actual_divider == 8);
+static_assert(Configuration::Config::actual_divider == 1);
 using Timer = avr::base::Timer<TimerDefinition, ClockTraits>;
 using FacadeConfiguration = Timer::BuiltInTop<1, 256, avr::base::TimerMode::pwm,
   avr::base::TimerPwmMode::fast, 8>;
@@ -134,8 +134,8 @@ int main() {
     return 8;
   }
   Configuration::setupTimer();
-  if (Memory::bytes[10] != (31 | (2 << 5)) || Configuration::get_top_count() != 255
-      || Configuration::getFrequency<double>() != 256.0 / 8 / 255) {
+  if (Memory::bytes[10] != (31 | (1 << 5)) || Configuration::get_top_count() != 255
+      || Configuration::getFrequency<double>() != 1.0) {
     return 9;
   }
   const auto before = Memory::count;
@@ -153,9 +153,9 @@ int main() {
   }
   DeviceOutputs::setup();
   DeviceOutputs::pwmWrite(OutputSettings{}, 4000);
-  if (DeviceOutputs::setFrequency(2000) != 8000 || Device::Timer1::getTopCount() != 8000
-      || Memory::bytes[0x86] != 0x40 || Memory::bytes[0x87] != 0x1f
-      || Memory::bytes[0x88] != 0xd0 || Memory::bytes[0x89] != 0x07
+  if (DeviceOutputs::setFrequency(2000) != 7999 || Device::Timer1::getTopCount() != 7999
+      || Memory::bytes[0x86] != 0x3f || Memory::bytes[0x87] != 0x1f
+      || Memory::bytes[0x88] != 0xcf || Memory::bytes[0x89] != 0x07
       || (Memory::bytes[0x24] & 2) == 0) {
     return 13;
   }

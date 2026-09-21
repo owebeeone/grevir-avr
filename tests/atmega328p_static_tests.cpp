@@ -23,9 +23,9 @@ static_assert(!HasPC7<Device::Gpio>);
 using T0 = Device::Timer0::FrequencyAccurate<2000,16000000,b::TimerMode::pwm,b::TimerPwmMode::fast,b::TimerTop::ocra>;
 using T1 = Device::Timer1::FrequencyAccurate<1000,16000000,b::TimerMode::pwm,b::TimerPwmMode::fast,b::TimerTop::icr>;
 using T2 = Device::Timer2::FrequencyAccurate<2000,16000000,b::TimerMode::pwm,b::TimerPwmMode::fast,b::TimerTop::ocra>;
-static_assert(T0::Config::cs_value == d::EnumCS0::clk64 && T0::Config::top_count == 125);
-static_assert(T1::Config::cs_value == d::EnumCS1::clk1 && T1::Config::top_count == 16000);
-static_assert(T2::Config::cs_value == d::EnumCS2::clk32 && T2::Config::top_count == 250);
+static_assert(T0::Config::cs_value == d::EnumCS0::clk64 && T0::Config::top_count == 124);
+static_assert(T1::Config::cs_value == d::EnumCS1::clk1 && T1::Config::top_count == 15999);
+static_assert(T2::Config::cs_value == d::EnumCS2::clk32 && T2::Config::top_count == 249);
 // Compiles concrete volatile bindings; never executed on the host.
 void compile_atmega328p() {
   T0::setupTimer(); T1::setupTimer(); T2::setupTimer();

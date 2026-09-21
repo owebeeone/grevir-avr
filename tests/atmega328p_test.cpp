@@ -26,7 +26,7 @@ TEST_CASE_METHOD(Fixture, "ATmega328P Timer0 applies actual byte addresses and P
   Pins::pwmWrite(A{},255);
   CHECK((Memory::bytes[0x2b] & 0x40) == 0x40);
   CHECK((Memory::bytes[0x44] & 0xc0) == 0);
-  CHECK(Pins::getFrequency<std::uint32_t>() == 980);
+  CHECK(Pins::getFrequency<std::uint32_t>() == 976);
   for (auto e : io()) { CHECK(e.width == 1); }
 }
 
@@ -35,17 +35,17 @@ TEST_CASE_METHOD(Fixture, "ATmega328P Timer1 configures ICR and preserves output
   Pins::setup();
   CHECK(Memory::bytes[0x80] == 0xb2);
   CHECK(Memory::bytes[0x81] == 0x19);
-  CHECK(word(0x86) == 16000);
-  CHECK(word(0x88) == 8000);
-  CHECK(word(0x8a) == 8000);
+  CHECK(word(0x86) == 15999);
+  CHECK(word(0x88) == 7999);
+  CHECK(word(0x8a) == 7999);
   CHECK(Memory::bytes[0x24] == 6);
   CHECK(Pins::getFrequency<std::uint32_t>() == 1000);
   Pins::pwmWrite(A{},4000);
-  CHECK(Pins::setFrequency(2000) == 8000);
-  CHECK(word(0x86) == 8000);
-  CHECK(word(0x88) == 2000);
-  CHECK(word(0x8a) == 4000);
-  CHECK(Bindings::Timer1::getTopCount() == 8000);
+  CHECK(Pins::setFrequency(2000) == 7999);
+  CHECK(word(0x86) == 7999);
+  CHECK(word(0x88) == 1999);
+  CHECK(word(0x8a) == 3999);
+  CHECK(Bindings::Timer1::getTopCount() == 7999);
   const auto before = Memory::bytes;
   Memory::events.clear();
   CHECK(Pins::setFrequency(0) == 0);
@@ -58,14 +58,14 @@ TEST_CASE_METHOD(Fixture, "ATmega328P Timer2 uses its divider map and OCRB PD3 o
   Pins::setup();
   CHECK(Memory::bytes[0xb0] == 0x33);
   CHECK(Memory::bytes[0xb1] == 0x0a);
-  CHECK(Memory::bytes[0xb3] == 100);
-  CHECK(Memory::bytes[0xb4] == 50);
+  CHECK(Memory::bytes[0xb3] == 99);
+  CHECK(Memory::bytes[0xb4] == 49);
   CHECK(Memory::bytes[0x2a] == 8);
   CHECK(Memory::bytes[0x24] == 0);
-  CHECK(Pins::setFrequency(2000) == 250);
+  CHECK(Pins::setFrequency(2000) == 249);
   CHECK(Memory::bytes[0xb1] == 0x0b); // Timer2 /32 is code 3.
-  CHECK(Memory::bytes[0xb3] == 250);
-  CHECK(Memory::bytes[0xb4] == 125);
+  CHECK(Memory::bytes[0xb3] == 249);
+  CHECK(Memory::bytes[0xb4] == 123);
   CHECK(Pins::getFrequency<std::uint32_t>() == 2000);
 }
 

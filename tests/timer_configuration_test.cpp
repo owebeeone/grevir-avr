@@ -16,10 +16,10 @@ TEST_CASE_METHOD(Fixture, "programmable timer configuration preserves unrelated 
   Memory::events.clear();
   Capture::setupTimer();
   CHECK(Memory::bytes[0] == 0xe9);
-  CHECK(Capture::get_top_count() == 16000);
+  CHECK(Capture::get_top_count() == 15999);
   CHECK(Capture::getFrequency<std::uint32_t>() == 1000);
-  CHECK(Capture::setFrequency(2000) == 8000);
-  CHECK(Capture::get_top_count() == 8000);
+  CHECK(Capture::setFrequency(2000) == 7999);
+  CHECK(Capture::get_top_count() == 7999);
   CHECK(Capture::getFrequency<std::uint32_t>() == 2000);
   for (const auto& event : Memory::events) {
     CHECK((event.address == 0 || event.address == 4));
@@ -45,8 +45,8 @@ TEST_CASE_METHOD(Fixture, "built in configuration applies mode and divider witho
   Fixed::setupTimer();
   CHECK(Memory::bytes[0] == 0x5b);
   CHECK(Fixed::get_top_count() == 255);
-  CHECK(Fixed::getFrequency<std::uint32_t>() == 980);
-  CHECK(Fixed::getFrequency<double>() == 16000000.0 / 64 / 255);
+  CHECK(Fixed::getFrequency<std::uint32_t>() == 976);
+  CHECK(Fixed::getFrequency<double>() == 16000000.0 / 64 / 256);
   CHECK(Fixed::setFrequency(100) == 255);
   CHECK(Memory::bytes[0] == 0x5d);
   CHECK(Fixed::getFrequency<std::uint32_t>() == 61);
@@ -79,9 +79,9 @@ TEST_CASE_METHOD(Fixture, "configuration respects a narrower TOP field", "[avr]"
   using Narrow = Model<Memory, std::uint16_t, std::uint8_t>;
   using Config = TimerConfiguration<Narrow::Definition, 1000, 16000000, CaptureSettings>;
   Config::setupTimer();
-  CHECK(Config::get_top_count() == 250);
+  CHECK(Config::get_top_count() == 249);
   CHECK(Memory::bytes[0] == 0xe3);
-  CHECK(Config::setFrequency(2000) == 125);
+  CHECK(Config::setFrequency(2000) == 124);
   CHECK(Config::getFrequency<std::uint32_t>() == 2000);
   for (const auto& event : Memory::events) {
     CHECK(event.width == 1);
@@ -97,12 +97,12 @@ TEST_CASE_METHOD(Fixture, "frequency reads check live mode and optional TOP meta
   CHECK(Capture::getFrequency<int>() == -1);
   CHECK(Capture::getFrequency<std::uint32_t>() == std::numeric_limits<std::uint32_t>::max());
   Memory::bytes[0] = 0x51;
-  CHECK(Capture::getFrequency<std::uint32_t>() == 62745);
+  CHECK(Capture::getFrequency<std::uint32_t>() == 62500);
   Memory::bytes[0] = 0x50; // Stopped clock is zero frequency.
   CHECK(Capture::getFrequency<int>() == 0);
   Capture::setupTimer();
   Memory::events.clear();
-  CHECK(Capture::Config::getFrequency<std::uint32_t>(setl::Optional<std::uint32_t>{2000}, 8000000) == 4000);
+  CHECK(Capture::Config::getFrequency<std::uint32_t>(setl::Optional<std::uint32_t>{1999}, 8000000) == 4000);
   for (const auto& event : Memory::events) {
     CHECK(event.address == 0); // Explicit TOP avoids reading ICR.
   }

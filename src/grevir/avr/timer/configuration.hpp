@@ -1,6 +1,6 @@
 #pragma once
 
-#include <grevir/avr/timer/clock.hpp>
+#include <grevir/avr/timer/pwm_clock.hpp>
 #include <grevir/avr/timer/definition.hpp>
 #include <grevir/base/int_scaler.hpp>
 
@@ -58,7 +58,10 @@ T configuredTimerFrequency(setl::Optional<std::uint32_t> top, std::uint32_t cloc
       return static_cast<T>(-1);
     }
   }
-  return getTimerFrequency<T, typename BitsCS::type, ClockTraits>(
+  if (pwm.get() == TimerPwmMode::none) {
+    return getTimerFrequency<T, typename BitsCS::type, ClockTraits>(top.get(), cs.value, clock, false);
+  }
+  return getPwmFrequency<T, typename BitsCS::type, ClockTraits>(
     top.get(), cs.value, clock, TimerPwmModePhaseCorrect(pwm.get()));
 }
 } // namespace nfp
@@ -110,14 +113,15 @@ struct TimerPwmConfigutation {
     ? TopField::width : CounterField::width;
   static constexpr std::uint32_t capacity = TopField::capacity < CounterField::capacity
     ? TopField::capacity : CounterField::capacity;
-  static constexpr EnumCS cs_value = getClockDivider<EnumCS, ClockTraits>(
+  static constexpr EnumCS cs_value = getPwmClockDivider<EnumCS, ClockTraits>(
     setup_frequency, base_frequency, top_resolution, phase_correct_mode);
-  static constexpr auto top_count = getClockTimerTop<EnumCS, ClockTraits>(
+  static constexpr auto top_count = getPwmTop<EnumCS, ClockTraits>(
     cs_value, setup_frequency, base_frequency, phase_correct_mode);
 
   static_assert(cs_value != ClockTraits::null_value,
     "Impossible frequency settings for timer.");
-  static_assert(top_count >= 2u && top_count <= capacity,
+  static constexpr std::uint32_t minimum_top = phase_correct_mode ? 2u : 3u;
+  static_assert(top_count >= minimum_top && top_count <= capacity,
     "GREVIR_TIMER_CONFIGURATION_COUNT_OUT_OF_RANGE");
 
   using TimerSetupApplier = setl::ApplierValues<
@@ -131,15 +135,15 @@ struct TimerPwmConfigutation {
    */
   template <typename T>
   static std::uint32_t setFrequency(T frequency) {
-    EnumCS cs_value = getClockDivider<EnumCS, ClockTraits>(
+    EnumCS cs_value = getPwmClockDivider<EnumCS, ClockTraits>(
         frequency, base_frequency, top_resolution, phase_correct_mode);
     if (cs_value == ClockTraits::null_value) {
       return 0;
     }
-    auto top_count = getClockTimerTop<EnumCS, ClockTraits>(
+    auto top_count = getPwmTop<EnumCS, ClockTraits>(
         cs_value, frequency, base_frequency, phase_correct_mode);
 
-    if (top_count < 2 || top_count > capacity) {
+    if (top_count < minimum_top || top_count > capacity) {
       return 0;
     }
     Registers::ReadModifyWrite(
@@ -167,7 +171,7 @@ struct TimerPwmConfigutation {
  * to one top value (0xff) while the 16 bit timers have 3 top values (0xff, 0x1ff and
  * 0x3ff or 8, 9 and 10 bits of resolution.
  *
- * Divider selection retains the legacy count convention. The resulting
+ * Divider selection uses the waveform period (TOP+1 or 2*TOP). The resulting
  * frequency is no greater than max_frequency; fractional results require an
  * explicitly selected floating-point getFrequency result type.
  */
@@ -197,7 +201,7 @@ struct TimerPwmBuiltinTopConfigutation {
   static constexpr TimerPwmMode timer_pwm_mode = w_timer_pwm_mode;
   static constexpr bool phase_correct_mode = TimerPwmModePhaseCorrect(w_timer_pwm_mode);
   static constexpr std::uint32_t top_resolution = w_bits_resolution;
-  static constexpr EnumCS cs_value = getClockDivider<EnumCS, ClockTraits>(
+  static constexpr EnumCS cs_value = getPwmClockDivider<EnumCS, ClockTraits>(
     setup_frequency, base_frequency, top_resolution, phase_correct_mode);
   static_assert(top_resolution > 0 && top_resolution <= nfp::TimerCountField<BitsTCNT>::width
       && top_resolution <= nfp::TimerCountField<typename TimerDef::template OcrType<OcrEnum::OcrA>::OCR>::width,
@@ -227,7 +231,7 @@ struct TimerPwmBuiltinTopConfigutation {
  */
   template <typename T>
   static std::uint32_t setFrequency(T frequency) {
-    EnumCS cs_value = getClockDivider<EnumCS, ClockTraits>(
+    EnumCS cs_value = getPwmClockDivider<EnumCS, ClockTraits>(
       frequency, base_frequency, top_resolution, phase_correct_mode);
 
     if (cs_value == ClockTraits::null_value) {

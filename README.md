@@ -201,7 +201,8 @@ assignment of the base clock frequency.
 
 `setupTimer()` applies the computed settings. `setFrequency(value)` returns the
 TOP count, or zero for invalid/unrepresentable requests without any register I/O.
-Programmable counts below two are also rejected. The low-level programmable
+Programmable TOP below three in fast PWM (two in the retained dual-slope path)
+is rejected. The low-level programmable
 configuration applies clock/mode only; `TimerConfiguration` additionally writes
 TOP after validation, at the field's native width. Built-in configuration writes
 only clock/mode. Integer calls retain integer arithmetic; floating input/results
@@ -213,7 +214,11 @@ or demonstrated glitch-free, and hardware buffering/synchronization is not model
 accept an explicit TOP and clock. Unknown mode or unavailable TOP returns the
 legacy `static_cast<Result>(-1)` sentinel (maximum for unsigned results); stopped
 or unmapped clocks return zero. Optional metadata is checked before use. These
-calculations retain the inherited count model, not hardware-validated PWM timing.
+PWM calculations now use TOP+1 ticks for fast PWM and 2*TOP for dual-slope
+PWM, through `timer/pwm_clock.hpp`. The legacy count helpers remain separate.
+For example, 16 MHz /1 at 1 kHz fast PWM programs TOP=15999; fixed TOP=255
+at /64 reports 976 Hz as an integer (976.5625 Hz with an explicit double result).
+These formulas and mock effects are checked; physical PWM timing remains unvalidated.
 The `OutputPin` alias is implemented by `timer/output.hpp`, included by the aggregate header.
 
 ## Timer output application
@@ -301,15 +306,15 @@ Host fixtures model Timer1's shared high-byte latch, flag clearing and force-com
 strobes, and assert register effects and pin routes. They do not model PWM waveforms,
 interrupt execution, electrical pins or Timer2 asynchronous synchronization. Current
 configuration coverage assumes synchronous timer clocks, enabled peripherals and
-caller-managed ownership. Frequency calculations still use the inherited count
-model; waveform-specific hardware TOP conversion remains work before claiming
-accurate hardware frequencies. No target compiler or hardware validation was run.
+caller-managed ownership. Waveform-specific TOP conversion is implemented and
+checked on the host; the experimental portable adapter generates fast-PWM
+candidates from all three declarations and applies them through these bindings. No target compiler or hardware validation was run.
 
 ## Validation and use
 
 Apple Clang 21 / arm64 macOS / C++23 checks:
 
-- Seventeen public headers compile independently, alongside address/type assertions and
+- Eighteen public headers compile independently, alongside address/type assertions and
   a compile-only volatile-access user.
 - Forty-nine host cases pass. They cover
   offsets, widths, preserved bits, access order, explicit barrier scopes, reads,
@@ -369,6 +374,7 @@ Consumers use `find_package(grevir-avr CONFIG REQUIRED)` and link `grevir::avr`.
 Host tests opt in with `GREVIR_BUILD_HOST_TESTS=ON` and installed Test Support/Catch2.
 Arduino metadata is present; no Arduino sketch or target compilation is claimed.
 Other device/peripheral inventories, a target AVR barrier implementation,
-waveform-specific TOP conversion, portable backend adaptation and board mappings
-remain later increments. The
+installed portable backend integration and board mappings remain later increments.
+An experimental end-to-end Timer0/1/2 fast-PWM adapter lives in the workspace
+`experiments/timer-allocation/`; other features remain TBD. The
 original Ardoinus checkout remains unchanged.
