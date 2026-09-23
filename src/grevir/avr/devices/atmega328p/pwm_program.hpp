@@ -34,10 +34,12 @@ struct Allocation {
     }
     return false;
   }();
+  template <std::size_t I, std::size_t E>
+  using EndpointClaim = ardo::GPIOResource<choices[I].candidate.endpoints[E].pin>;
   template <std::size_t I, std::size_t... E>
   static auto choice_claims(std::index_sequence<E...>) -> setl::TypeArgs<
     ardo::HardwareTimer<choices[I].hardware.timer>,
-    ardo::GPIOResource<choices[I].candidate.endpoints[E].pin>...>;
+    EndpointClaim<I, E>...>;
   template <std::size_t I>
   using ChoiceClaims = std::conditional_t<used<I>, decltype(choice_claims<I>(
     std::make_index_sequence<choices[I].candidate.count>{})),setl::TypeArgs<>>;
