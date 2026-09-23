@@ -1,6 +1,12 @@
 file(MAKE_DIRECTORY "${LOG_DIR}")
+set(include_args)
+foreach(dir IN LISTS INCLUDE_DIRS)
+  if(NOT dir STREQUAL "")
+    list(APPEND include_args "-I${dir}")
+  endif()
+endforeach()
 foreach(case RANGE 0 7)
-  execute_process(COMMAND "${CXX}" -std=c++23 "-I${INCLUDE_DIR}"
+  execute_process(COMMAND "${CXX}" -std=c++23 ${include_args}
     "-DCASE_ID=${case}" -fsyntax-only "${SOURCE}"
     RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE errors)
   file(WRITE "${LOG_DIR}/case-${case}.log" "${output}${errors}")

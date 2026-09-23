@@ -22,7 +22,7 @@ if(GREVIR_BUILD_COMPILE_CHECKS)
       VERBATIM)
     add_custom_target(grevir_timer_clock_checks ALL
       COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
-        "-DINCLUDE_DIR=${PROJECT_SOURCE_DIR}/src"
+        "-DINCLUDE_DIRS=$<TARGET_PROPERTY:grevir_avr_compile,INCLUDE_DIRECTORIES>"
         "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/timer_clock_probe.cpp"
         "-DLOG_DIR=${CMAKE_CURRENT_BINARY_DIR}/timer-clock-results"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/check_timer_clock.cmake"
