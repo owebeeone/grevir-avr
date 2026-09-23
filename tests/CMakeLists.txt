@@ -12,9 +12,10 @@ if(GREVIR_BUILD_COMPILE_CHECKS)
     timer_definition_static_tests.cpp timer_configuration_static_tests.cpp timer_output_static_tests.cpp atmega328p_static_tests.cpp)
   target_link_libraries(grevir_avr_compile PRIVATE grevir::avr)
   set_target_properties(grevir_avr_compile PROPERTIES CXX_EXTENSIONS OFF)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU)$")
+  if(CMAKE_CXX_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU|MSVC)$")
     add_custom_target(grevir_portable_pwm_checks ALL
       COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+      "-DCOMPILER_ID=${CMAKE_CXX_COMPILER_ID}"
         "-DINCLUDE_DIRS=$<TARGET_PROPERTY:grevir_avr_compile,INCLUDE_DIRECTORIES>"
         "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/portable_pwm_probe.cpp"
         "-DLOG_DIR=${CMAKE_CURRENT_BINARY_DIR}/portable-pwm-results"
@@ -22,6 +23,7 @@ if(GREVIR_BUILD_COMPILE_CHECKS)
       VERBATIM)
     add_custom_target(grevir_timer_clock_checks ALL
       COMMAND "${CMAKE_COMMAND}" "-DCXX=${CMAKE_CXX_COMPILER}"
+      "-DCOMPILER_ID=${CMAKE_CXX_COMPILER_ID}"
         "-DINCLUDE_DIRS=$<TARGET_PROPERTY:grevir_avr_compile,INCLUDE_DIRECTORIES>"
         "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/timer_clock_probe.cpp"
         "-DLOG_DIR=${CMAKE_CURRENT_BINARY_DIR}/timer-clock-results"
