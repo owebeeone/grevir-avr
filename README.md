@@ -1,5 +1,15 @@
 # Grevir AVR
 
+**Public API:** [Grevir AVR](https://github.com/owebeeone/grevir-wz/blob/main/docs/api/avr.md).
+See [installation](https://github.com/owebeeone/grevir-wz/blob/main/docs/install.md) and
+[supported platforms](https://github.com/owebeeone/grevir-wz/blob/main/docs/supported.md).
+The workspace `/docs` is the current user-facing contract; development
+checkpoints below are historical.
+
+AVR register, GPIO and ATmega328P timer backend implementations.
+
+## Development record (historical)
+
 AVR register/GPIO and timer clock/mode/definition/configuration/output extraction from Ardoinus. This package depends on Grevir
 Base, Registers and Core, retains the `ardo::sys::avr` namespaces, and uses explicit
 access and synchronization policies. It includes an explicitly selected ATmega328P timer/GPIO binding and no Arduino
