@@ -7,7 +7,7 @@
 namespace ardo::sys::avr::base {
 
 template <typename Enum> struct TccrEnumTraits;
-inline constexpr std::uint32_t InvalidClockDivider = std::numeric_limits<std::uint32_t>::max();
+inline constexpr std::uint32_t InvalidClockDivider = (std::numeric_limits<std::uint32_t>::max)();
 
 /**
  * Provides divider constants for Clock Selector enums.
@@ -83,7 +83,7 @@ struct DividerMappings<T, Ts...> {
 namespace nfp {
 template <typename T>
 constexpr bool positiveFinite(T value) {
-  return value > 0 && value <= std::numeric_limits<T>::max();
+  return value > 0 && value <= (std::numeric_limits<T>::max)();
 }
 
 // Positive divisors only. Unlike (value + divisor - 1) / divisor, cannot overflow.
@@ -97,9 +97,9 @@ template <typename R, typename F>
 constexpr bool fitsNonnegativeInteger(F value) {
   static_assert(std::is_integral_v<R> && std::is_floating_point_v<F>);
   if constexpr (std::numeric_limits<F>::digits >= std::numeric_limits<R>::digits) {
-    return value >= 0 && value <= static_cast<F>(std::numeric_limits<R>::max());
+    return value >= 0 && value <= static_cast<F>((std::numeric_limits<R>::max)());
   } else {
-    const F upper = static_cast<F>(std::numeric_limits<R>::max() / 2 + 1) * F{2};
+    const F upper = static_cast<F>((std::numeric_limits<R>::max)() / 2 + 1) * F{2};
     return value >= 0 && value < upper;
   }
 }
@@ -127,7 +127,7 @@ constexpr std::uint32_t getClockDividerMultiple(
     return InvalidClockDivider;
   }
   const std::uint32_t phase = phase_correct_mode ? 2 : 1;
-  const auto capacity = std::numeric_limits<std::uint32_t>::max()
+  const auto capacity = (std::numeric_limits<std::uint32_t>::max)()
     >> (32 - resolution_bits_of_top_comparator);
   if constexpr (std::is_integral_v<T>) {
     if (minimum_frequency > timer_clock_frequency / phase) {
@@ -190,7 +190,7 @@ constexpr R getTimerFrequency(
     const auto count_clock = phase_clock / count;
     const auto frequency = count_clock / divider;
     if constexpr (std::numeric_limits<R>::digits < 32) {
-      constexpr auto maximum = static_cast<std::uint32_t>(std::numeric_limits<R>::max());
+      constexpr auto maximum = static_cast<std::uint32_t>((std::numeric_limits<R>::max)());
       // Preserve rejection of max + a fraction, rather than truncating it to max.
       if (frequency > maximum || (frequency == maximum
           && (timer_clock_frequency % phase != 0 || phase_clock % count != 0
@@ -209,7 +209,7 @@ constexpr R getTimerFrequency(
         return R{0};
       }
     } else {
-      if (!(frequency <= std::numeric_limits<R>::max())) {
+      if (!(frequency <= (std::numeric_limits<R>::max)())) {
         return R{0};
       }
     }

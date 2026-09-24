@@ -25,7 +25,7 @@ template <typename Bits> struct TimerCountField {
   using Mapping = typename Bits::template ShiftMaskInfo<std::uint32_t>::group
     ::template apply<TimerCountMask>;
   static constexpr std::uint32_t capacity = Mapping::value;
-  static_assert(capacity <= std::numeric_limits<typename Bits::type>::max()
+  static_assert(capacity <= (std::numeric_limits<typename Bits::type>::max)()
       && capacity != 0 && (capacity & (capacity + std::uint32_t{1})) == 0,
     "GREVIR_TIMER_INVALID_COUNT_FIELD");
   static constexpr std::uint8_t width = [] {

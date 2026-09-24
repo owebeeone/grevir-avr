@@ -42,7 +42,8 @@ struct TimerOutputPin {
   static bool finiteValue(T value) {
     static_assert(std::is_arithmetic_v<T>);
     if constexpr (std::is_floating_point_v<T>) {
-      return value >= std::numeric_limits<T>::lowest() && value <= std::numeric_limits<T>::max();
+      return value >= std::numeric_limits<T>::lowest()
+        && value <= (std::numeric_limits<T>::max)();
     } else {
       return true;
     }

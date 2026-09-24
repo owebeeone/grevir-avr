@@ -41,7 +41,7 @@ constexpr std::uint32_t getPwmTop(Enum cs, T frequency, std::uint32_t clock, boo
 template <typename R, typename Enum, typename Traits = TccrEnumTraits<Enum>>
 constexpr R getPwmFrequency(std::uint32_t top, Enum cs, std::uint32_t clock, bool phase_correct) {
   if (phase_correct) { return getTimerFrequency<R, Enum, Traits>(top, cs, clock, true); }
-  if (top == std::numeric_limits<std::uint32_t>::max()) {
+  if (top == (std::numeric_limits<std::uint32_t>::max)()) {
     if constexpr (std::is_integral_v<R>) {
       return R{0}; // The complete 2^32-tick period exceeds a uint32 clock.
     } else {

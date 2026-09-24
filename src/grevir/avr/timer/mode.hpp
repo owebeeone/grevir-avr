@@ -10,7 +10,7 @@
 namespace ardo::sys::avr::base {
 
 // Metadata marker for a TOP supplied by a register, rather than a built-in value.
-inline constexpr std::uint32_t UnspecifiedTimerTop = std::numeric_limits<std::uint32_t>::max();
+inline constexpr std::uint32_t UnspecifiedTimerTop = (std::numeric_limits<std::uint32_t>::max)();
 
 /**
  * Indicates the type of waveform generator mode being used.

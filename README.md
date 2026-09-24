@@ -7,6 +7,10 @@ The workspace `/docs` is the current user-facing contract; development
 checkpoints below are historical.
 
 AVR register, GPIO and ATmega328P timer backend implementations.
+The first interrupt backend emits the ATmega328P Timer1 overflow vector and
+provides mask/pending/enable operations. Its Uno firmware was compiled with
+AVR GCC 14.2 and exercised in simavr; physical hardware remains untested.
+See the [interrupt guide](https://github.com/owebeeone/grevir-wz/blob/main/docs/guides/interrupts.md).
 
 ## Development record (historical)
 
