@@ -2,6 +2,7 @@
 
 #if defined(__AVR__)
 #include <grevir/base/compat/cstdint.hpp>
+#include <grevir/base/compat/string_view.hpp>
 
 namespace grevir::avr {
 
@@ -10,6 +11,7 @@ namespace grevir::avr {
 // including when this lock is constructed inside an ISR.
 class EventLock {
  public:
+  inline static constexpr std::string_view identity{"avr_sreg_v1", 11};
   EventLock() noexcept {
     asm volatile("in %0, __SREG__\n\tcli" : "=r"(saved_) :: "cc", "memory");
   }
