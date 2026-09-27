@@ -11,6 +11,8 @@ namespace grevir::avr {
 // including when this lock is constructed inside an ISR.
 class EventLock {
  public:
+  using TaskGuard = EventLock;
+  using IsrGuard = EventLock;
   inline static constexpr std::string_view identity{"avr_sreg_v1", 11};
   EventLock() noexcept {
     asm volatile("in %0, __SREG__\n\tcli" : "=r"(saved_) :: "cc", "memory");
