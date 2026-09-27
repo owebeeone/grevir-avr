@@ -94,6 +94,21 @@ static_assert(sizeof(Forged) > 0);
 void foreign_setup() { App::Allocation::template setup_owner<Request::name>(); }
 #elif PWM_CASE == 14
 void foreign_setup() { App::Allocation::setup(); }
+#elif PWM_CASE == 15
+using KnownAllocation = a::Backend<Device,16000000>::Allocate<
+  setl::TypeArgs<Request>,setl::TypeArgs<>>;
+void foreign_setup() {
+  grevir::nfp::SelectedTimerParameter<KnownAllocation,
+    setl::TypeArgs<Request>>::runSetup();
+}
+#elif PWM_CASE == 16
+using KnownAllocation = a::Backend<Device,16000000>::Allocate<
+  setl::TypeArgs<Request>,setl::TypeArgs<>>;
+using RevealedImpl = typename MotorModule::template Bind<KnownAllocation>::Impl;
+static_assert(sizeof(RevealedImpl) > 0);
+#elif PWM_CASE == 17
+using LeakedAllocation = typename App::Allocation;
+static_assert(sizeof(LeakedAllocation) > 0);
 #endif
 static_assert(sizeof(App)>0);
 void instantiate() { App::runSetup(); App::runLoop(); }

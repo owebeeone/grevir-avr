@@ -72,12 +72,12 @@ using MotorModule = grevir::RequestedModule<setl::TypeArgs<MotorRequest>,Motor,
 using FanModule = grevir::RequestedModule<setl::TypeArgs<>,Fan,ardo::ResourceClaim<>,MotorModule>;
 using App = grevir::AllocatedApplication<Backend,FanModule,MotorModule>;
 using Reverse = grevir::AllocatedApplication<Backend,MotorModule,FanModule>;
-static_assert(App::Allocation::plan.requests == Reverse::Allocation::plan.requests);
-static_assert(App::Allocation::plan.candidates == Reverse::Allocation::plan.candidates);
-static_assert(App::Allocation::Claims::has_resource<ardo::HardwareTimer<1>>::value);
-static_assert(App::Allocation::Claims::has_resource<ardo::GPIOResource<pin_b1>>::value);
-static_assert(!App::Allocation::Claims::has_resource<ardo::HardwareTimer<0>>::value);
-static_assert(App::Allocation::OwnerClaims<MotorRequest::name>
+static_assert(App::plan.requests == Reverse::plan.requests);
+static_assert(App::plan.candidates == Reverse::plan.candidates);
+static_assert(App::SelectedClaims::has_resource<ardo::HardwareTimer<1>>::value);
+static_assert(App::SelectedClaims::has_resource<ardo::GPIOResource<pin_b1>>::value);
+static_assert(!App::SelectedClaims::has_resource<ardo::HardwareTimer<0>>::value);
+static_assert(App::OwnerClaims<MotorRequest::name>
   ::has_resource<ardo::HardwareTimer<1>>::value);
 
 using AuxiliaryTimer = grevir::timer::Own<PwmRequest<"pwm",
@@ -90,10 +90,10 @@ template <typename Plan>
 struct Auxiliary : ardo::ModuleBase<ardo::Parameters<typename Plan::template Pwm<"pwm">>> {};
 using AuxiliaryModule = grevir::RequestedModule<setl::TypeArgs<AuxiliaryRequest>,Auxiliary>;
 using TwoOwnerApp = grevir::AllocatedApplication<Backend,MotorModule,AuxiliaryModule>;
-static_assert(TwoOwnerApp::Allocation::plan.ok());
-static_assert(TwoOwnerApp::Allocation::OwnerClaims<AuxiliaryRequest::name>
+static_assert(TwoOwnerApp::plan.ok());
+static_assert(TwoOwnerApp::OwnerClaims<AuxiliaryRequest::name>
   ::has_resource<ardo::HardwareTimer<0>>::value);
-static_assert(!TwoOwnerApp::Allocation::OwnerClaims<AuxiliaryRequest::name>
+static_assert(!TwoOwnerApp::OwnerClaims<AuxiliaryRequest::name>
   ::has_resource<ardo::HardwareTimer<1>>::value);
 
 struct Timer1Claim {
