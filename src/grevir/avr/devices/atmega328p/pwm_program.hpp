@@ -51,10 +51,13 @@ private:
   template <typename Requests_, template <typename> typename Module,
     typename Claims_, typename... Dependencies>
   friend struct ::grevir::RequestedModule;
+  template <typename Allocation_, typename Requests_>
+  friend struct ::grevir::nfp::SelectedTimerParameter;
   template <std::size_t Index> struct Selected;
   template <Text InstanceName, Text LocalName> struct RawPwm;
   template <typename Requests>
-  struct View {
+  struct ViewStorage {
+    struct type {
     template <Text Local>
     struct Binding {
       static_assert(OwnerScope<Requests>::template declares_use<Local>(),
@@ -63,7 +66,10 @@ private:
     };
     template <Text Local>
     using Pwm = typename Binding<Local>::type;
+    };
   };
+  template <typename Requests>
+  using View = typename ViewStorage<Requests>::type;
 public:
   inline static constexpr auto input = requests<Target::atmega328p, Instances...>();
   template <typename Instance>
@@ -168,6 +174,7 @@ public:
   }();
   template <auto Name>
   using OwnerClaims = typename ChoiceClaims<owner_index<Name>>::template eval<ardo::ResourceClaim>;
+private:
   template <auto Name>
   static void setup_owner() {
     static_assert(plan.ok() && owner_index<Name> < choices.size(),
@@ -245,7 +252,6 @@ private:
     }
   };
 
-public:
   template <std::size_t Index>
   static void setup_selected() {
     if constexpr (used<Index>) { Selected<Index>::setup(); }

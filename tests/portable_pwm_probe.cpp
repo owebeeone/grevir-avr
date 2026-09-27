@@ -23,6 +23,13 @@ struct Parameter {
 template <typename Plan>
 struct Motor : ardo::ModuleBase<ardo::Parameters<typename Plan::template Pwm<"pwm">>> {};
 using MotorModule = grevir::RequestedModule<setl::TypeArgs<Request>,Motor>;
+#if PWM_CASE == 12
+template <typename> struct RebindView;
+template <template <typename> typename ViewTemplate, typename OldRequests>
+struct RebindView<ViewTemplate<OldRequests>> {
+  using type = ViewTemplate<setl::TypeArgs<Request>>;
+};
+#endif
 #if PWM_CASE == 1
 using Reserved = ardo::HardwareTimer<1>;
 #elif PWM_CASE == 2
@@ -53,6 +60,14 @@ using Extra = grevir::RequestedModule<setl::TypeArgs<OtherRequest>,OtherMotor>;
 template <typename Plan>
 struct Foreign : ardo::ModuleBase<ardo::Parameters<typename Plan::template Pwm<"pwm">>> {};
 using Extra = grevir::RequestedModule<setl::TypeArgs<>,Foreign>;
+#elif PWM_CASE == 12
+template <typename Plan>
+struct Foreign : ardo::ModuleBase<ardo::Parameters<>> {
+  using Forged = typename RebindView<Plan>::type;
+  using Output = typename Forged::template Pwm<"pwm">;
+  static void runSetup() { Output::write(1,2); }
+};
+using Extra = grevir::RequestedModule<setl::TypeArgs<>,Foreign>;
 #else
 using Extra = grevir::ExistingModule<Existing>;
 #endif
@@ -75,6 +90,10 @@ static_assert(sizeof(Forbidden) > 0);
 #elif PWM_CASE == 11
 using Forged = typename App::Allocation::template View<setl::TypeArgs<Request>>;
 static_assert(sizeof(Forged) > 0);
+#elif PWM_CASE == 13
+void foreign_setup() { App::Allocation::template setup_owner<Request::name>(); }
+#elif PWM_CASE == 14
+void foreign_setup() { App::Allocation::setup(); }
 #endif
 static_assert(sizeof(App)>0);
 void instantiate() { App::runSetup(); App::runLoop(); }
