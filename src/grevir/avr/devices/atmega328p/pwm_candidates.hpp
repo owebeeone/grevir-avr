@@ -42,6 +42,39 @@ struct Hardware {
 };
 struct Choice { Candidate candidate; Hardware hardware; };
 
+constexpr unsigned hash_word(unsigned hash, unsigned value) {
+  for (unsigned i = 0; i < 4; ++i) {
+    hash = (hash ^ (value & 0xffu)) * 16777619u;
+    value >>= 8;
+  }
+  return hash;
+}
+constexpr unsigned hash_text(unsigned hash, std::string_view value) {
+  for (char c : value) {
+    hash = (hash ^ static_cast<unsigned char>(c)) * 16777619u;
+  }
+  return hash_word(hash, static_cast<unsigned>(value.size()));
+}
+constexpr unsigned stable_configuration(const Hardware& h) {
+  unsigned hash = 2166136261u;
+  hash = hash_word(hash, h.timer);
+  hash = hash_word(hash, h.cs);
+  hash = hash_word(hash, h.wgm);
+  hash = hash_word(hash, h.top);
+  hash = hash_word(hash, static_cast<unsigned>(h.source));
+  return hash == 0 ? 1 : hash;
+}
+constexpr unsigned stable_choice(const Candidate& c) {
+  unsigned hash = hash_word(2166136261u, c.configuration);
+  hash = hash_text(hash, c.endpoints[0].request.instance);
+  for (unsigned i = 0; i < c.count; ++i) {
+    hash = hash_text(hash, c.endpoints[i].request.local);
+    hash = hash_word(hash, c.endpoints[i].channel);
+    hash = hash_word(hash, c.endpoints[i].pin);
+  }
+  return hash == 0 ? 1 : hash;
+}
+
 template <typename T> struct Types;
 template <typename... T> struct Types<b::WaveformGeneratorModes<T...>> {
   template <typename F> static constexpr void each(F f) { (f.template operator()<T>(), ...); }
@@ -86,7 +119,6 @@ constexpr void append(std::vector<Choice>& choices, const Requests& members) {
         const Ratio frequency = Ratio{Clock, Divider::divider * cycles}.normalized();
         if (!window.contains(frequency)) { return; }
         Candidate c;
-        c.key = static_cast<unsigned>(choices.size() + 1);
         c.timer = Timer + 1;
         c.counter_bits = b::nfp::TimerCountField<typename Def::BitsTCNT>::width;
         // Prefer the smallest prescaler, then the numeric WGM code. Within a
@@ -113,10 +145,8 @@ constexpr void append(std::vector<Choice>& choices, const Requests& members) {
         }
         Hardware h{Timer, static_cast<unsigned>(Divider::cs_value), static_cast<unsigned>(Mode::wgm_value),
           static_cast<std::uint16_t>(cycles - 1), Mode::timer_top};
-        c.configuration = c.key;
-        for (const auto& prior : choices) {
-          if (prior.hardware == h) { c.configuration = prior.candidate.configuration; break; }
-        }
+        c.configuration = stable_configuration(h);
+        c.key = stable_choice(c);
         choices.push_back({c,h});
       });
     }

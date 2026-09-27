@@ -1,18 +1,86 @@
 #pragma once
 #include <grevir/avr/devices/atmega328p/pwm_candidates.hpp>
 #include <grevir/core/allocated_application.hpp>
+#include <grevir/peripherals/timer/owner_allocator.hpp>
 
 namespace grevir::pwm::atmega328p {
 
+template <typename Allocation, typename Requests> struct OwnerView;
+template <typename Allocation>
+struct OwnerView<Allocation, setl::TypeArgs<>> {
+  template <Text Local>
+  struct Binding {
+    static_assert(Local.view().empty(), "GREVIR_FOREIGN_TIMER_USE");
+    using type = void;
+  };
+  template <Text Local>
+  using Pwm = typename Binding<Local>::type;
+};
+template <typename Allocation, typename First, typename... Rest>
+struct OwnerView<Allocation, setl::TypeArgs<First, Rest...>> {
+  static_assert(((First::name.view() == Rest::name.view()) && ...),
+    "GREVIR_MODULE_MUST_DECLARE_ONE_TIMER_OWNER");
+  template <Text Local>
+  static consteval bool declares_use() {
+    bool found = false;
+    First::visit([&]<typename Use>(Use*) {
+      if (Use::name.view() == Local.view()) { found = true; }
+    });
+    return found;
+  }
+  template <Text Local>
+  struct Binding {
+    static_assert(declares_use<Local>(), "GREVIR_FOREIGN_TIMER_USE");
+    using type = typename Allocation::template Pwm<First::name, Local>;
+  };
+  template <Text Local>
+  using Pwm = typename Binding<Local>::type;
+};
+
 template <unsigned... Ids> struct Reservations {
   inline static constexpr std::array<unsigned, sizeof...(Ids)> values{Ids...};
+};
+
+struct WidthContradiction {
+  unsigned timer = 0;
+  unsigned required = 0;
+  unsigned available = 0;
+};
+template <auto Owner, Target Resident, unsigned Timer, unsigned Required,
+    unsigned Available>
+struct WidthGate {
+  static_assert(Required <= Available,
+    "GREVIR_TIMER_REQUIRED_WIDTH_EXCEEDS_EXPLICIT_TIMER");
+  static constexpr bool value = true;
 };
 
 // Fixed-frequency PWM binding. All allocation/generation is constant
 // evaluated; only fixed register operations and bounded duty arithmetic run.
 template <typename Bindings, std::uint32_t Clock, typename Reserved, typename... Instances>
 struct Allocation {
+  template <typename Requests>
+  using View = OwnerView<Allocation, Requests>;
   inline static constexpr auto input = requests<Target::atmega328p, Instances...>();
+  template <typename Instance>
+  inline static constexpr auto width_contradiction = [] {
+    constexpr std::array<unsigned, 3> available{
+      b::nfp::TimerCountField<typename Bindings::Timer0Def::BitsTCNT>::width,
+      b::nfp::TimerCountField<typename Bindings::Timer1Def::BitsTCNT>::width,
+      b::nfp::TimerCountField<typename Bindings::Timer2Def::BitsTCNT>::width};
+    for (const auto& request : input) {
+      if (request.key.instance != Instance::name.view()) { continue; }
+      const auto timer = request.config.required_timer;
+      if (timer != 0 && timer <= available.size()
+          && request.config.counter_bits_at_least > available[timer - 1]) {
+        return WidthContradiction{timer,request.config.counter_bits_at_least,
+          available[timer - 1]};
+      }
+    }
+    return WidthContradiction{};
+  }();
+  static_assert((WidthGate<Instances::name,Target::atmega328p,
+    width_contradiction<Instances>.timer,width_contradiction<Instances>.required,
+    width_contradiction<Instances>.available>::value && ...));
   inline static constexpr auto choices = [] {
     constexpr auto count = generate<Bindings,Clock>(input).size();
     const auto generated = generate<Bindings,Clock>(input);
@@ -20,12 +88,47 @@ struct Allocation {
     std::copy(generated.begin(), generated.end(), result.begin());
     return result;
   }();
-  inline static constexpr auto problem = [] {
-    std::array<Candidate,choices.size()> candidates{};
-    for (std::size_t i = 0; i < choices.size(); ++i) { candidates[i] = choices[i].candidate; }
-    return Problem{input, candidates, resources<Bindings>, Reserved::values};
+  inline static constexpr auto owner_problem = [] {
+    std::array<timer::Candidate,choices.size()> candidates{};
+    for (std::size_t i = 0; i < choices.size(); ++i) {
+      const auto& source = choices[i].candidate;
+      auto& destination = candidates[i];
+      destination.owner = source.endpoints[0].request.instance;
+      destination.key = source.key;
+      destination.timer = source.timer;
+      destination.preference = source.preference;
+      destination.binding_count = source.count;
+      for (unsigned e = 0; e < source.count; ++e) {
+        const auto& endpoint = source.endpoints[e];
+        destination.bindings[e] = {{endpoint.request.instance,endpoint.request.local},
+          timer::UseKind::pwm,endpoint.channel,endpoint.pin};
+        destination.exclusive_roles[destination.role_count++] = endpoint.channel;
+        destination.exclusive_roles[destination.role_count++] = endpoint.pin;
+      }
+    }
+    return timer::Problem{timer::demands<Instances...>(),candidates,Reserved::values};
   }();
-  inline static constexpr auto plan = compile(problem);
+  inline static constexpr auto owner_plan = timer::compile(owner_problem);
+  inline static constexpr auto plan = [] {
+    Plan<input.size()> result;
+    result.visited = owner_plan.visited;
+    for (std::size_t i = 0; i < input.size(); ++i) {
+      result.requests[i] = {owner_plan.uses[i].owner,owner_plan.uses[i].local};
+      result.candidates[i] = owner_plan.candidates[i];
+    }
+    const auto error = owner_plan.diagnostic.status;
+    result.diagnostic = {
+      error == timer::Status::success ? Status::success
+        : error == timer::Status::invalid_identity ? Status::invalid_identity
+        : error == timer::Status::duplicate_identity ? Status::duplicate_identity
+        : error == timer::Status::invalid_model ? Status::model_error
+        : error == timer::Status::no_candidate ? Status::no_candidate
+        : error == timer::Status::reserved ? Status::reserved
+        : error == timer::Status::exhausted ? Status::exhausted : Status::conflict,
+      {owner_plan.diagnostic.use.owner,owner_plan.diagnostic.use.local},
+      owner_plan.diagnostic.detail};
+    return result;
+  }();
 
   template <std::size_t Index>
   inline static constexpr bool used = [] {

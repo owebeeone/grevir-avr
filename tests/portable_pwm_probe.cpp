@@ -21,7 +21,7 @@ struct Parameter {
   static void runLoop() {}
 };
 template <typename Plan>
-struct Motor : ardo::ModuleBase<ardo::Parameters<typename Plan::template Pwm<"motor">>> {};
+struct Motor : ardo::ModuleBase<ardo::Parameters<typename Plan::template Pwm<"pwm">>> {};
 using MotorModule = grevir::RequestedModule<setl::TypeArgs<Request>,Motor>;
 #if PWM_CASE == 1
 using Reserved = ardo::HardwareTimer<1>;
@@ -46,7 +46,13 @@ using Extra = grevir::RequestedModule<setl::TypeArgs<Request>,Motor,ardo::Resour
 using OtherRequest = p::Instance<"motor",p::PwmRequest<"other",
   p::Frequency<p::Hertz<1000>,p::Exact>,p::DutyStepAtMost<1,256>,
   p::Pin<pin_b2>,p::avr::TopFromIcr>>;
-using Extra = grevir::RequestedModule<setl::TypeArgs<OtherRequest>,Motor>;
+template <typename Plan>
+struct OtherMotor : ardo::ModuleBase<ardo::Parameters<typename Plan::template Pwm<"other">>> {};
+using Extra = grevir::RequestedModule<setl::TypeArgs<OtherRequest>,OtherMotor>;
+#elif PWM_CASE == 9
+template <typename Plan>
+struct Foreign : ardo::ModuleBase<ardo::Parameters<typename Plan::template Pwm<"pwm">>> {};
+using Extra = grevir::RequestedModule<setl::TypeArgs<>,Foreign>;
 #else
 using Extra = grevir::ExistingModule<Existing>;
 #endif

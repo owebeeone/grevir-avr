@@ -101,8 +101,8 @@ using Request = pwm::Instance<"motor",pwm::PwmRequest<"pwm",
   pwm::For<pwm::Target::avr,pwm::Pin<pwm_device::physical_pin<typename Device::Gpio::ppPB1>()>,pwm::avr::TopFromIcr>,
   pwm::For<pwm::Target::esp32,pwm::Pin<18>,pwm::esp32::ApbClock>>>;
 template <typename Plan>
-struct Motor : ardo::ModuleBase<ardo::Parameters<typename Plan::template Pwm<"motor">>> {
-  static void runSetup() { Plan::template Pwm<"motor">::write(1,4); }
+struct Motor : ardo::ModuleBase<ardo::Parameters<typename Plan::template Pwm<"pwm">>> {
+  static void runSetup() { Plan::template Pwm<"pwm">::write(1,4); }
 };
 using PortableApp = grevir::AllocatedApplication<pwm_device::Backend<Device,16000000>,
   grevir::RequestedModule<setl::TypeArgs<Request>,Motor>>;
