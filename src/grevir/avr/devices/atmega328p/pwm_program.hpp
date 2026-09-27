@@ -5,21 +5,17 @@
 
 namespace grevir::pwm::atmega328p {
 
-template <typename Allocation, typename Requests> struct OwnerView;
-template <typename Allocation>
-struct OwnerView<Allocation, setl::TypeArgs<>> {
-  template <Text Local>
-  struct Binding {
-    static_assert(Local.view().empty(), "GREVIR_FOREIGN_TIMER_USE");
-    using type = void;
-  };
-  template <Text Local>
-  using Pwm = typename Binding<Local>::type;
+template <typename Requests> struct OwnerScope;
+template <>
+struct OwnerScope<setl::TypeArgs<>> {
+  inline static constexpr Text name{""};
+  template <Text> static consteval bool declares_use() { return false; }
 };
-template <typename Allocation, typename First, typename... Rest>
-struct OwnerView<Allocation, setl::TypeArgs<First, Rest...>> {
+template <typename First, typename... Rest>
+struct OwnerScope<setl::TypeArgs<First, Rest...>> {
   static_assert(((First::name.view() == Rest::name.view()) && ...),
     "GREVIR_MODULE_MUST_DECLARE_ONE_TIMER_OWNER");
+  inline static constexpr auto name = First::name;
   template <Text Local>
   static consteval bool declares_use() {
     bool found = false;
@@ -28,13 +24,6 @@ struct OwnerView<Allocation, setl::TypeArgs<First, Rest...>> {
     });
     return found;
   }
-  template <Text Local>
-  struct Binding {
-    static_assert(declares_use<Local>(), "GREVIR_FOREIGN_TIMER_USE");
-    using type = typename Allocation::template Pwm<First::name, Local>;
-  };
-  template <Text Local>
-  using Pwm = typename Binding<Local>::type;
 };
 
 template <unsigned... Ids> struct Reservations {
@@ -58,8 +47,24 @@ struct WidthGate {
 // evaluated; only fixed register operations and bounded duty arithmetic run.
 template <typename Bindings, std::uint32_t Clock, typename Reserved, typename... Instances>
 struct Allocation {
+private:
+  template <typename Requests_, template <typename> typename Module,
+    typename Claims_, typename... Dependencies>
+  friend struct ::grevir::RequestedModule;
+  template <std::size_t Index> struct Selected;
+  template <Text InstanceName, Text LocalName> struct RawPwm;
   template <typename Requests>
-  using View = OwnerView<Allocation, Requests>;
+  struct View {
+    template <Text Local>
+    struct Binding {
+      static_assert(OwnerScope<Requests>::template declares_use<Local>(),
+        "GREVIR_FOREIGN_TIMER_USE");
+      using type = RawPwm<OwnerScope<Requests>::name,Local>;
+    };
+    template <Text Local>
+    using Pwm = typename Binding<Local>::type;
+  };
+public:
   inline static constexpr auto input = requests<Target::atmega328p, Instances...>();
   template <typename Instance>
   inline static constexpr auto width_contradiction = [] {
@@ -102,8 +107,6 @@ struct Allocation {
         const auto& endpoint = source.endpoints[e];
         destination.bindings[e] = {{endpoint.request.instance,endpoint.request.local},
           timer::UseKind::pwm,endpoint.channel,endpoint.pin};
-        destination.exclusive_roles[destination.role_count++] = endpoint.channel;
-        destination.exclusive_roles[destination.role_count++] = endpoint.pin;
       }
     }
     return timer::Problem{timer::demands<Instances...>(),candidates,Reserved::values};
@@ -152,8 +155,6 @@ struct Allocation {
     ::template eval<ardo::ResourceClaim>;
   using Claims = decltype(claims(std::make_index_sequence<choices.size()>{}));
 
-  template <std::size_t Index> struct Selected;
-
   template <auto Name>
   inline static constexpr std::size_t owner_index = [] {
     for (std::size_t i = 0; i < plan.requests.size(); ++i) {
@@ -174,6 +175,7 @@ struct Allocation {
     Selected<owner_index<Name>>::setup();
   }
 
+private:
   template <std::size_t Index>
   struct Selected {
     inline static constexpr auto hardware = choices[Index].hardware;
@@ -243,6 +245,7 @@ struct Allocation {
     }
   };
 
+public:
   template <std::size_t Index>
   static void setup_selected() {
     if constexpr (used<Index>) { Selected<Index>::setup(); }
@@ -257,8 +260,9 @@ struct Allocation {
     setup_all(std::make_index_sequence<choices.size()>{});
   }
 
-  template <Text InstanceName, Text LocalName = "pwm">
-  struct Pwm {
+private:
+  template <Text InstanceName, Text LocalName>
+  struct RawPwm {
     using Claims = ardo::ResourceClaim<>; // The single application owner holds physical claims.
     static void runSetup() {}
     static void runLoop() {}

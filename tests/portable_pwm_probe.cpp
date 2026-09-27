@@ -69,5 +69,12 @@ using App = grevir::AllocatedApplication<a::Backend<Device,16000000>,BadModule>;
 #else
 using App = grevir::AllocatedApplication<a::Backend<Device,16000000>,MotorModule,Extra>;
 #endif
+#if PWM_CASE == 10
+using Forbidden = typename App::Allocation::template RawPwm<"motor","pwm">;
+static_assert(sizeof(Forbidden) > 0);
+#elif PWM_CASE == 11
+using Forged = typename App::Allocation::template View<setl::TypeArgs<Request>>;
+static_assert(sizeof(Forged) > 0);
+#endif
 static_assert(sizeof(App)>0);
 void instantiate() { App::runSetup(); App::runLoop(); }
