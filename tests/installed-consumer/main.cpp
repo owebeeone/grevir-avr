@@ -98,7 +98,7 @@ namespace pwm = grevir::pwm;
 namespace pwm_device = pwm::atmega328p;
 using Request = pwm::Instance<"motor",pwm::PwmRequest<"pwm",
   pwm::Frequency<pwm::Hertz<1000>,pwm::Exact>,pwm::DutyStepAtMost<1,256>,
-  pwm::For<pwm::Target::avr,pwm::Pin<pwm_device::PB1>,pwm::avr::TopFromIcr>,
+  pwm::For<pwm::Target::avr,pwm::Pin<pwm_device::physical_pin<typename Device::Gpio::ppPB1>()>,pwm::avr::TopFromIcr>,
   pwm::For<pwm::Target::esp32,pwm::Pin<18>,pwm::esp32::ApbClock>>>;
 template <typename Plan>
 struct Motor : ardo::ModuleBase<ardo::Parameters<typename Plan::template Pwm<"motor">>> {

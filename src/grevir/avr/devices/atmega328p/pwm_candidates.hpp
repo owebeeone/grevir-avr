@@ -6,15 +6,30 @@
 namespace grevir::pwm::atmega328p {
 namespace b = ardo::sys::avr::base;
 namespace d = ardo::sys::avr::arch_atmega328p;
-// Physical pad identities, independent of an Arduino board numbering scheme.
-inline constexpr unsigned PB1 = 101, PB2 = 102, PB3 = 103, PD3 = 203, PD5 = 205, PD6 = 206;
+
+template <typename PortRegister, unsigned Bit>
+consteval unsigned physical_pin() {
+  static_assert(Bit < 8, "GREVIR_AVR_INVALID_PIN_BIT");
+  return static_cast<unsigned>(PortRegister::addr * 8 + Bit);
+}
+
+template <typename Pin>
+consteval unsigned physical_pin() {
+  return physical_pin<typename Pin::PortReg::register_def, Pin::PortBit::max_bits>();
+}
+
+template <typename Bindings>
 inline constexpr std::array resources{
   Resource{1,0,Kind::timer}, Resource{2,0,Kind::timer}, Resource{3,0,Kind::timer},
   Resource{11,1,Kind::channel}, Resource{12,1,Kind::channel},
   Resource{21,2,Kind::channel}, Resource{22,2,Kind::channel},
   Resource{31,3,Kind::channel}, Resource{32,3,Kind::channel},
-  Resource{PB1,0,Kind::pin}, Resource{PB2,0,Kind::pin}, Resource{PB3,0,Kind::pin},
-  Resource{PD3,0,Kind::pin}, Resource{PD5,0,Kind::pin}, Resource{PD6,0,Kind::pin}
+  Resource{physical_pin<typename Bindings::Timer0Def::template OcrType<b::OcrEnum::OcrA>::GpioDef>(),0,Kind::pin},
+  Resource{physical_pin<typename Bindings::Timer0Def::template OcrType<b::OcrEnum::OcrB>::GpioDef>(),0,Kind::pin},
+  Resource{physical_pin<typename Bindings::Timer1Def::template OcrType<b::OcrEnum::OcrA>::GpioDef>(),0,Kind::pin},
+  Resource{physical_pin<typename Bindings::Timer1Def::template OcrType<b::OcrEnum::OcrB>::GpioDef>(),0,Kind::pin},
+  Resource{physical_pin<typename Bindings::Timer2Def::template OcrType<b::OcrEnum::OcrA>::GpioDef>(),0,Kind::pin},
+  Resource{physical_pin<typename Bindings::Timer2Def::template OcrType<b::OcrEnum::OcrB>::GpioDef>(),0,Kind::pin}
 };
 
 struct Hardware {
@@ -34,17 +49,6 @@ template <typename... T> struct Types<b::WaveformGeneratorModes<T...>> {
 template <typename... T> struct Types<b::DividerMappings<T...>> {
   template <typename F> static constexpr void each(F f) { (f.template operator()<T>(), ...); }
 };
-
-template <typename Bindings, typename Pin>
-constexpr unsigned physical_pin() {
-  if constexpr (std::is_same_v<Pin, typename Bindings::Gpio::ppPB1>) { return PB1; }
-  else if constexpr (std::is_same_v<Pin, typename Bindings::Gpio::ppPB2>) { return PB2; }
-  else if constexpr (std::is_same_v<Pin, typename Bindings::Gpio::ppPB3>) { return PB3; }
-  else if constexpr (std::is_same_v<Pin, typename Bindings::Gpio::ppPD3>) { return PD3; }
-  else if constexpr (std::is_same_v<Pin, typename Bindings::Gpio::ppPD5>) { return PD5; }
-  else if constexpr (std::is_same_v<Pin, typename Bindings::Gpio::ppPD6>) { return PD6; }
-  else { return 0; }
-}
 
 constexpr Source source(b::TimerTop top) {
   if (top == b::TimerTop::icr) { return Source::icr; }
@@ -84,6 +88,7 @@ constexpr void append(std::vector<Choice>& choices, const Requests& members) {
         Candidate c;
         c.key = static_cast<unsigned>(choices.size() + 1);
         c.timer = Timer + 1;
+        c.counter_bits = b::nfp::TimerCountField<typename Def::BitsTCNT>::width;
         // Prefer the smallest prescaler, then the numeric WGM code. Within a
         // programmable mode the longest acceptable period maximizes resolution.
         c.preference = Divider::divider * 16 + static_cast<unsigned>(Mode::wgm_value);
@@ -92,15 +97,17 @@ constexpr void append(std::vector<Choice>& choices, const Requests& members) {
         c.source = source(Mode::timer_top);
         for (const auto& r : members) {
           if (r.config.error != ConfigError::none || !r.config.step.valid()
+              || (r.config.required_timer != 0 && r.config.required_timer != c.timer)
+              || r.config.counter_bits_at_least > c.counter_bits
               || !at_most({1,cycles}, r.config.step)
               || (r.config.waveform != Waveform::any && r.config.waveform != c.waveform)
               || (r.config.source != Source::any && r.config.source != c.source)) { return; }
           using A = typename Def::template OcrType<b::OcrEnum::OcrA>::GpioDef;
           using B = typename Def::template OcrType<b::OcrEnum::OcrB>::GpioDef;
           unsigned channel = 0;
-          if (r.config.pin == physical_pin<Bindings,A>() && Mode::timer_top != b::TimerTop::ocra) {
+          if (r.config.pin == physical_pin<A>() && Mode::timer_top != b::TimerTop::ocra) {
             channel = 1;
-          } else if (r.config.pin == physical_pin<Bindings,B>()) { channel = 2; }
+          } else if (r.config.pin == physical_pin<B>()) { channel = 2; }
           if (channel == 0 || (c.count != 0 && c.endpoints[0].pin == r.config.pin)) { return; }
           c.endpoints[c.count++] = {r.key, (Timer + 1) * 10 + channel, r.config.pin, {1,cycles}};
         }
@@ -124,14 +131,12 @@ constexpr auto generate(Requests requests) {
   for (std::size_t i = 0; i < requests.size(); ++i) {
     bool previous = false;
     for (std::size_t j = 0; j < i; ++j) {
-      if (requests[i].group != 0 && requests[j].group == requests[i].group) { previous = true; }
+      if (requests[j].key.instance == requests[i].key.instance) { previous = true; }
     }
     if (previous) { continue; }
     std::vector<Request> members{requests[i]};
-    if (requests[i].group != 0) {
-      for (std::size_t j = i + 1; j < requests.size(); ++j) {
-        if (requests[j].group == requests[i].group) { members.push_back(requests[j]); }
-      }
+    for (std::size_t j = i + 1; j < requests.size(); ++j) {
+      if (requests[j].key.instance == requests[i].key.instance) { members.push_back(requests[j]); }
     }
     append<Bindings,0,typename Bindings::Timer0Def,d::TccrEnumTraits<d::EnumCS0>,Clock>(result,members);
     append<Bindings,1,typename Bindings::Timer1Def,d::TccrEnumTraits<d::EnumCS1>,Clock>(result,members);

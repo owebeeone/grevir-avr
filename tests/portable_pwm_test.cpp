@@ -2,7 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 using namespace portable_pwm_fixture;
 
-TEST_CASE_METHOD(atmega328p_mock::Fixture, "portable PWM application configures shared owner before module callbacks", "[avr]") {
+TEST_CASE_METHOD(atmega328p_mock::Fixture, "module-owned timer configures once before callbacks", "[avr]") {
   callbacks.clear();
   App::runSetup();
   CHECK(callbacks == std::vector<unsigned>{0,1,2});
@@ -20,4 +20,11 @@ TEST_CASE_METHOD(atmega328p_mock::Fixture, "portable PWM application configures 
   App::runLoop();
   CHECK(callbacks == std::vector<unsigned>{3,4});
   CHECK(Memory::events.empty());
+}
+
+TEST_CASE_METHOD(atmega328p_mock::Fixture, "independent modules receive distinct physical timers", "[avr]") {
+  TwoOwnerApp::runSetup();
+  CHECK(word(0x86) == 15999);
+  CHECK(atmega328p_mock::Memory::bytes[0x47] == 0);
+  CHECK(atmega328p_mock::Memory::bytes[0x45] != 0);
 }

@@ -23,7 +23,7 @@ struct Allocation {
   inline static constexpr auto problem = [] {
     std::array<Candidate,choices.size()> candidates{};
     for (std::size_t i = 0; i < choices.size(); ++i) { candidates[i] = choices[i].candidate; }
-    return Problem{input, candidates, resources, Reserved::values};
+    return Problem{input, candidates, resources<Bindings>, Reserved::values};
   }();
   inline static constexpr auto plan = compile(problem);
 
@@ -48,6 +48,28 @@ struct Allocation {
     ::template cat_type_arg<typename grevir::nfp::Join<ChoiceClaims<I>...>::type>
     ::template eval<ardo::ResourceClaim>;
   using Claims = decltype(claims(std::make_index_sequence<choices.size()>{}));
+
+  template <std::size_t Index> struct Selected;
+
+  template <auto Name>
+  inline static constexpr std::size_t owner_index = [] {
+    for (std::size_t i = 0; i < plan.requests.size(); ++i) {
+      if (plan.requests[i].instance == Name.view()) {
+        for (std::size_t c = 0; c < choices.size(); ++c) {
+          if (choices[c].candidate.key == plan.candidates[i]) { return c; }
+        }
+      }
+    }
+    return choices.size();
+  }();
+  template <auto Name>
+  using OwnerClaims = typename ChoiceClaims<owner_index<Name>>::template eval<ardo::ResourceClaim>;
+  template <auto Name>
+  static void setup_owner() {
+    static_assert(plan.ok() && owner_index<Name> < choices.size(),
+      "GREVIR_TIMER_OWNER_BINDING_UNAVAILABLE");
+    Selected<owner_index<Name>>::setup();
+  }
 
   template <std::size_t Index>
   struct Selected {

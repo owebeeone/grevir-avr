@@ -18,13 +18,17 @@ constexpr void reserve_pin(std::vector<unsigned>& ids) {
     if (std::find(ids.begin(),ids.end(),Pin) == ids.end()) { ids.push_back(Pin); }
   }
 }
-template <typename Explicit, typename... Claims>
+template <typename Bindings, typename Explicit, typename... Claims>
 struct ReservationsFromClaims {
   static constexpr auto collect() {
     std::vector<unsigned> ids(Explicit::values.begin(),Explicit::values.end());
     reserve_timer<0,Claims...>(ids); reserve_timer<1,Claims...>(ids); reserve_timer<2,Claims...>(ids);
-    reserve_pin<PB1,Claims...>(ids); reserve_pin<PB2,Claims...>(ids); reserve_pin<PB3,Claims...>(ids);
-    reserve_pin<PD3,Claims...>(ids); reserve_pin<PD5,Claims...>(ids); reserve_pin<PD6,Claims...>(ids);
+    reserve_pin<physical_pin<typename Bindings::Timer0Def::template OcrType<b::OcrEnum::OcrA>::GpioDef>(),Claims...>(ids);
+    reserve_pin<physical_pin<typename Bindings::Timer0Def::template OcrType<b::OcrEnum::OcrB>::GpioDef>(),Claims...>(ids);
+    reserve_pin<physical_pin<typename Bindings::Timer1Def::template OcrType<b::OcrEnum::OcrA>::GpioDef>(),Claims...>(ids);
+    reserve_pin<physical_pin<typename Bindings::Timer1Def::template OcrType<b::OcrEnum::OcrB>::GpioDef>(),Claims...>(ids);
+    reserve_pin<physical_pin<typename Bindings::Timer2Def::template OcrType<b::OcrEnum::OcrA>::GpioDef>(),Claims...>(ids);
+    reserve_pin<physical_pin<typename Bindings::Timer2Def::template OcrType<b::OcrEnum::OcrB>::GpioDef>(),Claims...>(ids);
     return ids;
   }
   inline static constexpr auto values = [] {
@@ -40,7 +44,7 @@ template <typename Bindings, std::uint32_t Clock, typename Reserved, typename Re
 struct Allocate;
 template <typename Bindings, std::uint32_t Clock, typename Reserved, typename... Requests, typename... Claims>
 struct Allocate<Bindings,Clock,Reserved,setl::TypeArgs<Requests...>,setl::TypeArgs<Claims...>> {
-  using type = Allocation<Bindings,Clock,ReservationsFromClaims<Reserved,Claims...>,Requests...>;
+  using type = Allocation<Bindings,Clock,ReservationsFromClaims<Bindings,Reserved,Claims...>,Requests...>;
 };
 } // namespace nfp
 
