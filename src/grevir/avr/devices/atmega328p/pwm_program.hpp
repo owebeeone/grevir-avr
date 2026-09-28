@@ -2,6 +2,7 @@
 #include <grevir/avr/devices/atmega328p/pwm_candidates.hpp>
 #include <grevir/core/allocated_application.hpp>
 #include <grevir/peripherals/timer/owner_allocator.hpp>
+#include <grevir/base/compat/utility.hpp>
 
 namespace grevir::pwm::atmega328p {
 

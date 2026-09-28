@@ -1,7 +1,6 @@
 #pragma once
 #include <grevir/peripherals/pwm/allocator.hpp>
 #include <grevir/avr/devices/atmega328p/timers.hpp>
-#include <vector>
 
 namespace grevir::pwm::atmega328p {
 namespace b = ardo::sys::avr::base;
@@ -42,6 +41,21 @@ struct Hardware {
 };
 struct Choice { Candidate candidate; Hardware hardware; };
 
+namespace nfp {
+template <typename T, std::size_t Capacity>
+struct BoundedBuffer {
+  T entries[Capacity == 0 ? 1 : Capacity]{};
+  std::size_t length = 0;
+  constexpr void push_back(const T& entry) { entries[length++] = entry; }
+  constexpr std::size_t size() const { return length; }
+  constexpr bool empty() const { return length == 0; }
+  constexpr T* begin() { return entries; }
+  constexpr T* end() { return entries + length; }
+  constexpr const T* begin() const { return entries; }
+  constexpr const T* end() const { return entries + length; }
+};
+}
+
 constexpr unsigned hash_word(unsigned hash, unsigned value) {
   for (unsigned i = 0; i < 4; ++i) {
     hash = (hash ^ (value & 0xffu)) * 16777619u;
@@ -77,9 +91,11 @@ constexpr unsigned stable_choice(const Candidate& c) {
 
 template <typename T> struct Types;
 template <typename... T> struct Types<b::WaveformGeneratorModes<T...>> {
+  static constexpr std::size_t count = sizeof...(T);
   template <typename F> static constexpr void each(F f) { (f.template operator()<T>(), ...); }
 };
 template <typename... T> struct Types<b::DividerMappings<T...>> {
+  static constexpr std::size_t count = sizeof...(T);
   template <typename F> static constexpr void each(F f) { (f.template operator()<T>(), ...); }
 };
 
@@ -105,7 +121,7 @@ constexpr std::uint32_t longest_period(FrequencyWindow window, std::uint32_t clo
 
 template <typename Bindings, unsigned Timer, typename Def, typename Clocks,
     std::uint32_t Clock, typename Requests>
-constexpr void append(std::vector<Choice>& choices, const Requests& members) {
+constexpr void append(auto& choices, const Requests& members) {
   FrequencyWindow window;
   for (const auto& r : members) { window = window.intersect(r.config.frequency); }
   if (!window.valid() || window.empty() || members.empty() || members.size() > 2) { return; }
@@ -153,18 +169,28 @@ constexpr void append(std::vector<Choice>& choices, const Requests& members) {
   });
 }
 
-template <typename Bindings, std::uint32_t Clock, typename Requests>
-constexpr auto generate(Requests requests) {
+template <typename Bindings, std::uint32_t Clock, std::size_t N>
+consteval auto generate(std::array<Request, N> requests) {
   static_assert(Clock > 0 && Clock <= 20'000'000, "ATmega328P clock outside MVP range");
+  // Each distinct instance can yield no more than one choice for each
+  // timer/mode/divider combination. The bound follows device traits.
+  constexpr std::size_t capacity = N * (
+    Types<typename Bindings::Timer0Def::ModeTraits::Modes>::count
+      * Types<typename d::TccrEnumTraits<d::EnumCS0>::FreqMapping>::count
+    + Types<typename Bindings::Timer1Def::ModeTraits::Modes>::count
+      * Types<typename d::TccrEnumTraits<d::EnumCS1>::FreqMapping>::count
+    + Types<typename Bindings::Timer2Def::ModeTraits::Modes>::count
+      * Types<typename d::TccrEnumTraits<d::EnumCS2>::FreqMapping>::count);
   std::sort(requests.begin(), requests.end(), [](const auto& a, const auto& b) { return a.key < b.key; });
-  std::vector<Choice> result;
+  nfp::BoundedBuffer<Choice, capacity> result;
   for (std::size_t i = 0; i < requests.size(); ++i) {
     bool previous = false;
     for (std::size_t j = 0; j < i; ++j) {
       if (requests[j].key.instance == requests[i].key.instance) { previous = true; }
     }
     if (previous) { continue; }
-    std::vector<Request> members{requests[i]};
+    nfp::BoundedBuffer<Request, N> members;
+    members.push_back(requests[i]);
     for (std::size_t j = i + 1; j < requests.size(); ++j) {
       if (requests[j].key.instance == requests[i].key.instance) { members.push_back(requests[j]); }
     }
