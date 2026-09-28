@@ -36,6 +36,14 @@ struct WidthContradiction {
   unsigned required = 0;
   unsigned available = 0;
 };
+template <std::size_t N>
+struct AllocationPlan {
+  Diagnostic diagnostic{};
+  std::array<Key, N> requests{};
+  std::array<Identity, N> candidates{};
+  std::uint32_t visited = 0;
+  constexpr bool ok() const { return diagnostic.status == Status::success; }
+};
 template <auto Owner, Target Resident, unsigned Timer, unsigned Required,
     unsigned Available>
 struct WidthGate {
@@ -101,12 +109,12 @@ public:
     return result;
   }();
   inline static constexpr auto owner_problem = [] {
-    std::array<timer::Candidate,choices.size()> candidates{};
+    std::array<timer::Candidate<Identity>,choices.size()> candidates{};
     for (std::size_t i = 0; i < choices.size(); ++i) {
       const auto& source = choices[i].candidate;
       auto& destination = candidates[i];
       destination.owner = source.endpoints[0].request.instance;
-      destination.key = source.key;
+      destination.identity = choices[i].identity();
       destination.timer = source.timer;
       destination.preference = source.preference;
       destination.binding_count = source.count;
@@ -120,7 +128,7 @@ public:
   }();
   inline static constexpr auto owner_plan = timer::compile(owner_problem);
   inline static constexpr auto plan = [] {
-    Plan<input.size()> result;
+    AllocationPlan<input.size()> result;
     result.visited = owner_plan.visited;
     for (std::size_t i = 0; i < input.size(); ++i) {
       result.requests[i] = {owner_plan.uses[i].owner,owner_plan.uses[i].local};
@@ -142,8 +150,8 @@ public:
 
   template <std::size_t Index>
   inline static constexpr bool used = [] {
-    for (auto key : plan.candidates) {
-      if (key == choices[Index].candidate.key) { return true; }
+    for (const auto& key : plan.candidates) {
+      if (key == choices[Index].identity()) { return true; }
     }
     return false;
   }();
@@ -167,7 +175,7 @@ public:
     for (std::size_t i = 0; i < plan.requests.size(); ++i) {
       if (plan.requests[i].instance == Name.view()) {
         for (std::size_t c = 0; c < choices.size(); ++c) {
-          if (choices[c].candidate.key == plan.candidates[i]) { return c; }
+          if (choices[c].identity() == plan.candidates[i]) { return c; }
         }
       }
     }
@@ -278,7 +286,7 @@ private:
       for (std::size_t i = 0; i < plan.requests.size(); ++i) {
         if (plan.requests[i] == key) {
           for (std::size_t c = 0; c < choices.size(); ++c) {
-            if (choices[c].candidate.key == plan.candidates[i]) { return c; }
+            if (choices[c].identity() == plan.candidates[i]) { return c; }
           }
         }
       }

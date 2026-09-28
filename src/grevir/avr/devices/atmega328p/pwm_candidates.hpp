@@ -1,6 +1,7 @@
 #pragma once
 #include <grevir/peripherals/pwm/allocator.hpp>
 #include <grevir/avr/devices/atmega328p/timers.hpp>
+#include <grevir/base/compat/tuple.hpp>
 
 namespace grevir::pwm::atmega328p {
 namespace b = ardo::sys::avr::base;
@@ -39,7 +40,62 @@ struct Hardware {
   b::TimerTop source = b::TimerTop::none;
   constexpr bool operator==(const Hardware&) const = default;
 };
-struct Choice { Candidate candidate; Hardware hardware; };
+struct PwmCandidate {
+  unsigned preference = 0;
+  unsigned timer = 0;
+  unsigned counter_bits = 0;
+  Ratio frequency{};
+  Waveform waveform = Waveform::any;
+  Source source = Source::any;
+  std::array<Endpoint, 2> endpoints{};
+  unsigned count = 0;
+};
+
+struct Identity {
+  std::string_view owner{};
+  Hardware hardware{};
+  std::array<Endpoint, 2> endpoints{};
+  unsigned count = 0;
+  Ratio frequency{};
+
+  constexpr bool operator==(const Identity& other) const {
+    if (owner != other.owner || hardware != other.hardware
+        || count != other.count || frequency != other.frequency) { return false; }
+    for (unsigned i = 0; i < count; ++i) {
+      if (endpoints[i] != other.endpoints[i]) { return false; }
+    }
+    return true;
+  }
+  constexpr bool operator<(const Identity& other) const {
+    const auto header = std::tuple{owner, hardware.timer, hardware.cs,
+      hardware.wgm, hardware.top, hardware.source, count,
+      frequency.numerator, frequency.denominator};
+    const auto other_header = std::tuple{other.owner, other.hardware.timer,
+      other.hardware.cs, other.hardware.wgm, other.hardware.top,
+      other.hardware.source, other.count, other.frequency.numerator,
+      other.frequency.denominator};
+    if (header != other_header) { return header < other_header; }
+    for (unsigned i = 0; i < count; ++i) {
+      const auto& a = endpoints[i];
+      const auto& b = other.endpoints[i];
+      const auto left = std::tuple{a.request.instance, a.request.local,
+        a.channel, a.pin, a.step.numerator, a.step.denominator};
+      const auto right = std::tuple{b.request.instance, b.request.local,
+        b.channel, b.pin, b.step.numerator, b.step.denominator};
+      if (left != right) { return left < right; }
+    }
+    return false;
+  }
+};
+
+struct Choice {
+  PwmCandidate candidate;
+  Hardware hardware;
+  constexpr Identity identity() const {
+    return {candidate.endpoints[0].request.instance, hardware,
+      candidate.endpoints, candidate.count, candidate.frequency};
+  }
+};
 
 namespace nfp {
 template <typename T, std::size_t Capacity>
@@ -56,38 +112,6 @@ struct BoundedBuffer {
 };
 }
 
-constexpr unsigned hash_word(unsigned hash, unsigned value) {
-  for (unsigned i = 0; i < 4; ++i) {
-    hash = (hash ^ (value & 0xffu)) * 16777619u;
-    value >>= 8;
-  }
-  return hash;
-}
-constexpr unsigned hash_text(unsigned hash, std::string_view value) {
-  for (char c : value) {
-    hash = (hash ^ static_cast<unsigned char>(c)) * 16777619u;
-  }
-  return hash_word(hash, static_cast<unsigned>(value.size()));
-}
-constexpr unsigned stable_configuration(const Hardware& h) {
-  unsigned hash = 2166136261u;
-  hash = hash_word(hash, h.timer);
-  hash = hash_word(hash, h.cs);
-  hash = hash_word(hash, h.wgm);
-  hash = hash_word(hash, h.top);
-  hash = hash_word(hash, static_cast<unsigned>(h.source));
-  return hash == 0 ? 1 : hash;
-}
-constexpr unsigned stable_choice(const Candidate& c) {
-  unsigned hash = hash_word(2166136261u, c.configuration);
-  hash = hash_text(hash, c.endpoints[0].request.instance);
-  for (unsigned i = 0; i < c.count; ++i) {
-    hash = hash_text(hash, c.endpoints[i].request.local);
-    hash = hash_word(hash, c.endpoints[i].channel);
-    hash = hash_word(hash, c.endpoints[i].pin);
-  }
-  return hash == 0 ? 1 : hash;
-}
 
 template <typename T> struct Types;
 template <typename... T> struct Types<b::WaveformGeneratorModes<T...>> {
@@ -134,7 +158,7 @@ constexpr void append(auto& choices, const Requests& members) {
         if (cycles < 4) { return; }
         const Ratio frequency = Ratio{Clock, Divider::divider * cycles}.normalized();
         if (!window.contains(frequency)) { return; }
-        Candidate c;
+        PwmCandidate c;
         c.timer = Timer + 1;
         c.counter_bits = b::nfp::TimerCountField<typename Def::BitsTCNT>::width;
         // Prefer the smallest prescaler, then the numeric WGM code. Within a
@@ -161,8 +185,6 @@ constexpr void append(auto& choices, const Requests& members) {
         }
         Hardware h{Timer, static_cast<unsigned>(Divider::cs_value), static_cast<unsigned>(Mode::wgm_value),
           static_cast<std::uint16_t>(cycles - 1), Mode::timer_top};
-        c.configuration = stable_configuration(h);
-        c.key = stable_choice(c);
         choices.push_back({c,h});
       });
     }
